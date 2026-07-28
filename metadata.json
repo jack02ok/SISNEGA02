@@ -1,0 +1,6 @@
+{
+  "name": "Sistem Informasi Sekolah Dasar (SISFO SD)",
+  "description": "Sistem Informasi Sekolah Dasar terpadu dengan Firebase, Multi-Role RBAC, Fonnte WA Gateway, Barcode Scanner, Rapor PTS, UKS, dan Perpustakaan.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

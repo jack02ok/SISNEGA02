@@ -1,0 +1,264 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "System user with multi-role permissions and assignments",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "roles": { "type": "array" },
+        "rombelBinaan": { "type": "string" },
+        "mapelBinaan": { "type": "array" },
+        "nip": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["uid", "email", "roles"]
+    },
+    "Siswa": {
+      "title": "Siswa",
+      "description": "Student master data",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nisn": { "type": "string" },
+        "nis": { "type": "string" },
+        "nama": { "type": "string" },
+        "gender": { "type": "string" },
+        "tempatLahir": { "type": "string" },
+        "tanggalLahir": { "type": "string" },
+        "rombelId": { "type": "string" },
+        "namaOrtu": { "type": "string" },
+        "noWaOrtu": { "type": "string" },
+        "status": { "type": "string" },
+        "bebasPustaka": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["nisn", "nama", "rombelId"]
+    },
+    "Rombel": {
+      "title": "Rombel",
+      "description": "Class room master data",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "nama": { "type": "string" },
+        "tingkat": { "type": "number" },
+        "waliKelasId": { "type": "string" },
+        "waliKelasNama": { "type": "string" },
+        "tahunAjaran": { "type": "string" }
+      },
+      "required": ["nama", "tingkat"]
+    },
+    "Absensi": {
+      "title": "Absensi",
+      "description": "Daily student attendance log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "siswaId": { "type": "string" },
+        "namaSiswa": { "type": "string" },
+        "rombelId": { "type": "string" },
+        "tanggal": { "type": "string" },
+        "waktuMasuk": { "type": "string" },
+        "status": { "type": "string" },
+        "keterangan": { "type": "string" },
+        "waNotified": { "type": "boolean" }
+      },
+      "required": ["siswaId", "tanggal", "status"]
+    },
+    "JurnalKBM": {
+      "title": "JurnalKBM",
+      "description": "Teaching journal and student log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "guruId": { "type": "string" },
+        "guruNama": { "type": "string" },
+        "rombelId": { "type": "string" },
+        "mapel": { "type": "string" },
+        "tanggal": { "type": "string" },
+        "jamKe": { "type": "string" },
+        "materi": { "type": "string" },
+        "catatanBKB": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["guruId", "rombelId", "tanggal", "materi"]
+    },
+    "Penilaian": {
+      "title": "Penilaian",
+      "description": "Student grade records",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "siswaId": { "type": "string" },
+        "rombelId": { "type": "string" },
+        "mapel": { "type": "string" },
+        "semester": { "type": "string" },
+        "nilaiFormatif": { "type": "array" },
+        "nilaiSumatif": { "type": "number" },
+        "nilaiPTS": { "type": "number" },
+        "deskripsiCP": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["siswaId", "mapel"]
+    },
+    "UKSScreening": {
+      "title": "UKSScreening",
+      "description": "Student health growth screening",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "siswaId": { "type": "string" },
+        "namaSiswa": { "type": "string" },
+        "rombelId": { "type": "string" },
+        "tanggal": { "type": "string" },
+        "tinggiBadan": { "type": "number" },
+        "beratBadan": { "type": "number" },
+        "imtSkor": { "type": "number" },
+        "imtKategori": { "type": "string" },
+        "kondisiGigi": { "type": "string" },
+        "kondisiMata": { "type": "string" },
+        "kondisiPendengaran": { "type": "string" },
+        "catatanPetugas": { "type": "string" }
+      },
+      "required": ["siswaId", "tanggal"]
+    },
+    "UKSPasien": {
+      "title": "UKSPasien",
+      "description": "UKS patient treatment log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "siswaId": { "type": "string" },
+        "namaSiswa": { "type": "string" },
+        "rombelId": { "type": "string" },
+        "tanggal": { "type": "string" },
+        "waktu": { "type": "string" },
+        "keluhan": { "type": "string" },
+        "tindakan": { "type": "string" },
+        "statusPasien": { "type": "string" },
+        "waNotified": { "type": "boolean" }
+      },
+      "required": ["siswaId", "keluhan"]
+    },
+    "Buku": {
+      "title": "Buku",
+      "description": "Library book inventory",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "kodeBuku": { "type": "string" },
+        "judul": { "type": "string" },
+        "pengarang": { "type": "string" },
+        "penerbit": { "type": "string" },
+        "kategori": { "type": "string" },
+        "stok": { "type": "number" },
+        "dipinjam": { "type": "number" },
+        "lokasi": { "type": "string" }
+      },
+      "required": ["kodeBuku", "judul"]
+    },
+    "TransaksiPerpus": {
+      "title": "TransaksiPerpus",
+      "description": "Library loan & return transaction",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "siswaId": { "type": "string" },
+        "namaSiswa": { "type": "string" },
+        "bukuId": { "type": "string" },
+        "judulBuku": { "type": "string" },
+        "tanggalPinjam": { "type": "string" },
+        "tanggalJatuhTempo": { "type": "string" },
+        "tanggalKembali": { "type": "string" },
+        "denda": { "type": "number" },
+        "status": { "type": "string" }
+      },
+      "required": ["siswaId", "bukuId"]
+    },
+    "Surat": {
+      "title": "Surat",
+      "description": "Incoming and outgoing mail record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "jenis": { "type": "string" },
+        "nomorSurat": { "type": "string" },
+        "perihal": { "type": "string" },
+        "pengirim": { "type": "string" },
+        "penerima": { "type": "string" },
+        "tanggal": { "type": "string" },
+        "disposisiKepsek": { "type": "string" },
+        "fileUrl": { "type": "string" }
+      },
+      "required": ["jenis", "nomorSurat", "perihal"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "System settings like Fonnte API Token",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fonnteToken": { "type": "string" },
+        "schoolName": { "type": "string" },
+        "schoolAddress": { "type": "string" },
+        "kepsekNama": { "type": "string" },
+        "kepsekNip": { "type": "string" },
+        "dendaPerHari": { "type": "number" }
+      }
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles with multi-role access control"
+    },
+    "/siswa/{siswaId}": {
+      "schema": "Siswa",
+      "description": "Student collection"
+    },
+    "/rombel/{rombelId}": {
+      "schema": "Rombel",
+      "description": "Class rooms collection"
+    },
+    "/absensi/{absensiId}": {
+      "schema": "Absensi",
+      "description": "Attendance log"
+    },
+    "/jurnalKBM/{jurnalId}": {
+      "schema": "JurnalKBM",
+      "description": "Teaching journal log"
+    },
+    "/penilaian/{penilaianId}": {
+      "schema": "Penilaian",
+      "description": "Student grade records"
+    },
+    "/uksScreening/{screeningId}": {
+      "schema": "UKSScreening",
+      "description": "UKS health growth screening data"
+    },
+    "/uksPasien/{pasienId}": {
+      "schema": "UKSPasien",
+      "description": "UKS patient treatment logs"
+    },
+    "/buku/{bukuId}": {
+      "schema": "Buku",
+      "description": "Library book catalog"
+    },
+    "/transaksiPerpus/{transaksiId}": {
+      "schema": "TransaksiPerpus",
+      "description": "Library loan & return records"
+    },
+    "/surat/{suratId}": {
+      "schema": "Surat",
+      "description": "School mail records"
+    },
+    "/settings/config": {
+      "schema": "Settings",
+      "description": "Global school configuration"
+    }
+  }
+}

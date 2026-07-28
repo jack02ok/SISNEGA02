@@ -1,0 +1,143 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions for security and role checks
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function hasRole(role) {
+      return isSignedIn() && (
+        role in getUserData().roles ||
+        getUserData().role == role
+      );
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        hasRole('ADMIN') ||
+        request.auth.token.email == 'jakasaputra210@gmail.com'
+      );
+    }
+
+    function isGuru() {
+      return isSignedIn() && (
+        hasRole('GURU') ||
+        hasRole('GURU_KELAS') ||
+        hasRole('GURU_MAPEL') ||
+        isAdmin()
+      );
+    }
+
+    function isKepsek() {
+      return isSignedIn() && (
+        hasRole('KEPALA_SEKOLAH') ||
+        isAdmin()
+      );
+    }
+
+    // 1. Siswa Collection (Public read for Student Portal lookup, write for authenticated users)
+    match /siswa/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 2. Absensi Collection
+    match /absensi/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 3. Buku & Transaksi Perpustakaan Collections
+    match /buku/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+    match /transaksiPerpus/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+    match /transaksi/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 4. UKS / Health Screening Collections
+    match /uksScreening/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+    match /uks/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 5. Jadwal Pelajaran Collection
+    match /jadwal/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 6. Jurnal KBM & Penilaian Collections
+    match /jurnalKBM/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+    match /penilaian/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 7. Rombel, Settings, Kalender, Surat, Disposisi, Inventaris, Supervisi
+    match /rombel/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+    match /settings/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+    match /kalender/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+    match /surat/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+    match /disposisi/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+    match /inventaris/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+    match /supervisi/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+    match /auditLogs/{document} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // 8. Users Collection
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+
+    // Default fallback rule
+    match /{document=**} {
+      allow read: if true;
+      allow write: if isSignedIn();
+    }
+  }
+}
