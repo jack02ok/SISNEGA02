@@ -234,6 +234,7 @@ export interface AppSettings {
   kepsekNip: string;
   dendaPerHari: number;
   schoolLogoUrl?: string;
+  schoolBgUrl?: string;
 }
 
 

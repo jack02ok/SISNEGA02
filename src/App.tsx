@@ -29,7 +29,8 @@ export default function App() {
     kepsekNama: 'Drs. H. Ahmad Wijaya, M.Pd.',
     kepsekNip: '196805121992031004',
     dendaPerHari: 1000,
-    schoolLogoUrl: 'https://raw.githubusercontent.com/jack02ok/osnsd/refs/heads/main/logosd.png'
+    schoolLogoUrl: 'https://raw.githubusercontent.com/jack02ok/osnsd/refs/heads/main/logosd.png',
+    schoolBgUrl: '/sd_neglasari_02.svg'
   });
 
   // Default initial tabs when role switches
@@ -223,29 +224,37 @@ export default function App() {
           </main>
         </div>
       ) : (
-        /* Login Hero Section for unauthenticated user */
-        <div className="flex-1 flex items-center justify-center p-6 bg-gradient-to-br from-slate-900 via-slate-800 to-blue-950 text-white">
-          <div className="max-w-md w-full bg-slate-800/80 backdrop-blur-md rounded-3xl p-8 border border-slate-700 shadow-2xl text-center space-y-6">
-            <div className="w-20 h-20 bg-white/10 rounded-2xl flex items-center justify-center mx-auto shadow-lg shadow-blue-500/20 p-2 border border-white/20">
+        /* Login Hero Section for unauthenticated user with Clean White Background */
+        <div className="relative flex-1 flex items-center justify-center p-6 bg-white text-slate-800 min-h-[calc(100vh-64px)]">
+          {/* Subtle decorative background pattern / light gradient */}
+          <div className="absolute inset-0 z-0 bg-[radial-gradient(#e2e8f0_1px,transparent_1px)] [background-size:16px_16px] opacity-70" />
+          <div className="absolute inset-0 z-0 bg-gradient-to-b from-slate-50/50 via-white to-blue-50/30" />
+
+          {/* Login Card Container */}
+          <div className="relative z-10 max-w-md w-full bg-white rounded-3xl p-8 border border-slate-200/80 shadow-2xl shadow-slate-200/50 text-center space-y-6">
+            <div className="w-20 h-20 bg-emerald-50 rounded-2xl flex items-center justify-center mx-auto shadow-md p-2 border border-emerald-100">
               {settings.schoolLogoUrl ? (
                 <img
                   src={settings.schoolLogoUrl}
                   alt={settings.schoolName}
-                  className="w-full h-full object-contain drop-shadow-md"
+                  className="w-full h-full object-contain drop-shadow-sm"
                   referrerPolicy="no-referrer"
                   onError={(e) => {
                     (e.target as HTMLElement).style.display = 'none';
                   }}
                 />
               ) : (
-                <School className="w-10 h-10 text-white" />
+                <School className="w-10 h-10 text-emerald-600" />
               )}
             </div>
 
             <div className="space-y-2">
-              <h2 className="text-2xl font-black text-white">{settings.schoolName}</h2>
-              <p className="text-xs text-blue-300 font-medium">Sistem Informasi Sekolah Dasar Terpadu</p>
-              <p className="text-xs text-slate-400 pt-2 leading-relaxed">
+              <span className="px-3 py-1 bg-emerald-100/80 text-emerald-800 border border-emerald-200 rounded-full text-[10px] font-bold tracking-wider uppercase inline-block">
+                SD Negeri Neglasari 02
+              </span>
+              <h2 className="text-2xl font-black text-slate-900 tracking-tight">{settings.schoolName}</h2>
+              <p className="text-xs text-blue-600 font-semibold">Sistem Informasi Sekolah Dasar Terpadu</p>
+              <p className="text-xs text-slate-600 pt-2 leading-relaxed">
                 Silakan masuk menggunakan Akun Google resmi sekolah untuk mengakses fitur Admin, Kepala Sekolah, Guru, Pustakawan, atau Petugas UKS.
               </p>
             </div>
@@ -253,7 +262,7 @@ export default function App() {
             <div className="space-y-3">
               <button
                 onClick={handleGoogleLogin}
-                className="w-full py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-sm transition-all shadow-lg shadow-blue-600/30 flex items-center justify-center gap-3"
+                className="w-full py-3.5 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold rounded-xl text-sm transition-all shadow-md shadow-blue-500/20 flex items-center justify-center gap-3"
               >
                 <LogIn className="w-5 h-5" />
                 Masuk dengan Google OAuth
@@ -261,19 +270,19 @@ export default function App() {
 
               <button
                 onClick={() => setShowPublicPortal(true)}
-                className="w-full py-3 bg-indigo-900/60 hover:bg-indigo-800/80 text-indigo-200 border border-indigo-700 font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2"
+                className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-2"
               >
-                <QrCode className="w-4 h-4 text-amber-300" />
+                <QrCode className="w-4 h-4 text-emerald-600" />
                 Akses Portal Siswa & Kartu Digital (Publik)
               </button>
             </div>
 
-            <div className="pt-4 border-t border-slate-700/60 text-[11px] text-slate-400 space-y-1">
-              <p className="flex items-center justify-center gap-1.5 text-amber-300 font-semibold">
-                <ShieldAlert className="w-3.5 h-3.5" />
+            <div className="pt-4 border-t border-slate-100 text-[11px] text-slate-500 space-y-1">
+              <p className="flex items-center justify-center gap-1.5 text-emerald-700 font-semibold">
+                <ShieldAlert className="w-3.5 h-3.5 text-emerald-600" />
                 Mendukung Multi-Role RBAC & Dropdown Switcher
               </p>
-              <p>Firebase Firestore • Fonnte WA Gateway • Barcode Scanner</p>
+              <p className="text-slate-400">Firebase Firestore • Fonnte WA Gateway • Barcode Scanner</p>
             </div>
           </div>
         </div>

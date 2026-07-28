@@ -14,3 +14,68 @@
     color: #f8fafc;
   }
 }
+
+/* Print Utilities & Friendly Styling */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 11pt !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Hide app navigation UI during print */
+  aside,
+  header,
+  nav,
+  .no-print,
+  .floating-fab,
+  button:not(.allow-print),
+  .modal-backdrop {
+    display: none !important;
+  }
+
+  /* Force display of printable containers */
+  .print-only {
+    display: block !important;
+  }
+
+  .print-friendly-container {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    page-break-inside: avoid;
+  }
+
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    page-break-inside: auto;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+
+  thead {
+    display: table-header-group;
+  }
+}
+
+/* Screen fallback for print-only elements */
+.print-only {
+  display: none;
+}
+

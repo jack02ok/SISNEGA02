@@ -4,7 +4,7 @@ import { collection, onSnapshot, doc, setDoc, addDoc, deleteDoc } from 'firebase
 import { Siswa, Absensi, JurnalKBM, Penilaian, InventarisRombel, UKSScreening, UserProfile, AppSettings, JadwalPiket, AcademicCalendarEvent } from '../../types';
 import { BarcodeScannerModal } from '../BarcodeScannerModal';
 import { sendFonnteWA } from '../../services/fonnteService';
-import { downloadElementAsPDF } from '../../services/pdfService';
+import { downloadElementAsPDF, printElement } from '../../services/pdfService';
 import { getDriveAccessToken, uploadToGoogleDrive } from '../../services/driveExportService';
 import { cacheStudentRoster, getCachedStudentRoster, subscribeOnlineStatus, isOnline as checkIsOnline } from '../../services/offlineStorage';
 import {
@@ -876,12 +876,20 @@ Orang Tua / Wali: ${s.namaOrtu || '-'}
                 Aturan Sistem: Deskripsi Capaian Pembelajaran (CP) digenerate otomatis berdasarkan threshold nilai PTS.
               </p>
             </div>
-            <button
-              onClick={() => downloadElementAsPDF('report-nilai-pdf', `Laporan_Rekap_Nilai_${activeRombel.replace(/\s+/g, '_')}.pdf`)}
-              className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-xs transition-all"
-            >
-              <Printer className="w-4 h-4 text-amber-400" /> Cetak Laporan Nilai (PDF)
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => printElement('report-nilai-pdf', `Cetak_Laporan_Nilai_${activeRombel.replace(/\s+/g, '_')}`)}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-xs transition-all"
+              >
+                <Printer className="w-4 h-4 text-amber-300" /> Cetak ke Printer (Fisik)
+              </button>
+              <button
+                onClick={() => downloadElementAsPDF('report-nilai-pdf', `Laporan_Rekap_Nilai_${activeRombel.replace(/\s+/g, '_')}.pdf`)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-xs transition-all"
+              >
+                <Printer className="w-4 h-4 text-amber-400" /> Download PDF Laporan
+              </button>
+            </div>
           </div>
 
           {/* Visualisasi Grafik Tren Nilai Siswa (Recharts) */}
@@ -1294,19 +1302,25 @@ Orang Tua / Wali: ${s.namaOrtu || '-'}
                   </div>
                 </div>
 
-                <div className="flex justify-end gap-2 border-t pt-3">
+                <div className="flex flex-wrap justify-end gap-2 border-t pt-3">
                   <button
                     onClick={() => handleExportRaporToDrive(selectedRaporSiswa)}
                     disabled={isExportingDrive}
-                    className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-sm"
+                    className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-xs"
                   >
                     <Send className="w-4 h-4" /> {isExportingDrive ? 'Mengunggah...' : 'Ekspor ke Google Drive'}
                   </button>
                   <button
-                    onClick={() => downloadElementAsPDF('rapor-pts-pdf', `Rapor_PTS_${selectedRaporSiswa.nisn}.pdf`)}
-                    className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-sm"
+                    onClick={() => printElement('rapor-pts-pdf', `Rapor_PTS_${selectedRaporSiswa.nama.replace(/\s+/g, '_')}`)}
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-xs transition-all"
                   >
-                    <Printer className="w-4 h-4" /> Download PDF Rapor 1 Lembar
+                    <Printer className="w-4 h-4 text-amber-300" /> Cetak ke Printer / PDF
+                  </button>
+                  <button
+                    onClick={() => downloadElementAsPDF('rapor-pts-pdf', `Rapor_PTS_${selectedRaporSiswa.nisn}.pdf`)}
+                    className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-xs"
+                  >
+                    <Printer className="w-4 h-4" /> Download File PDF
                   </button>
                 </div>
               </div>

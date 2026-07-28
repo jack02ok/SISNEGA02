@@ -8,6 +8,8 @@ import { DigitalLibraryCardModal } from '../DigitalLibraryCardModal';
 import { sendFonnteWA } from '../../services/fonnteService';
 import { downloadElementAsPDF } from '../../services/pdfService';
 import { logAuditEvent } from '../../services/auditService';
+import { saveOrQueueRecord } from '../../services/indexedDbSyncQueue';
+import { OfflineSyncBanner } from '../OfflineSyncBanner';
 import {
   BookMarked,
   Repeat,
@@ -19,7 +21,8 @@ import {
   Send,
   Search,
   BookOpen,
-  Clock
+  Clock,
+  RotateCcw
 } from 'lucide-react';
 
 interface PustakawanViewsProps {
@@ -84,7 +87,7 @@ export const PustakawanViews: React.FC<PustakawanViewsProps> = ({ activeTab, set
     setScanMessage(`❓ Kode "${decodedText}" tidak cocok dengan NISN Siswa maupun Kode Buku.`);
   };
 
-  // Process Loan Transaction
+  // Process Loan Transaction with Offline IndexedDB Sync Queue support
   const handleProcessLoan = async () => {
     if (!scannedSiswa || !scannedBuku) {
       alert("Scan Barcode ID Siswa DAN Barcode Buku terlebih dahulu!");
@@ -109,16 +112,17 @@ export const PustakawanViews: React.FC<PustakawanViewsProps> = ({ activeTab, set
       status: 'DIPINJAM'
     };
 
-    // Save transaction, update book stock
-    await setDoc(doc(db, 'transaksiPerpus', trxId), newTrx);
-    await updateDoc(doc(db, 'buku', scannedBuku.id), {
-      dipinjam: (scannedBuku.dipinjam || 0) + 1
-    });
+    // Save transaction via saveOrQueueRecord (Direct Firestore write or IndexedDB offline queue)
+    const trxRes = await saveOrQueueRecord('transaksiPerpus', 'SET', newTrx, trxId);
+    
+    // Update book loan counter
+    const currentDipinjam = scannedBuku.dipinjam || 0;
+    await saveOrQueueRecord('buku', 'UPDATE', { dipinjam: Math.max(0, currentDipinjam + 1) }, scannedBuku.id);
 
     // AUTO-TRIGGER WA FONNTE TO PARENT!
     const waMsg = `Pemberitahuan Perpustakaan ${settings.schoolName}:\nAnanda *${scannedSiswa.nama}* telah meminjam buku:\n📖 *" ${scannedBuku.judul} "*\n📅 Tgl Jatuh Tempo: *${dueDateStr}*.\n\nMohon merawat dan mengembalikan tepat waktu. Terima kasih.`;
 
-    if (scannedSiswa.noWaOrtu) {
+    if (scannedSiswa.noWaOrtu && typeof navigator !== 'undefined' && navigator.onLine) {
       await sendFonnteWA({
         target: scannedSiswa.noWaOrtu,
         message: waMsg,
@@ -126,7 +130,7 @@ export const PustakawanViews: React.FC<PustakawanViewsProps> = ({ activeTab, set
       });
     }
 
-    // Log Audit Event for Library Loan
+    // Log Audit Event
     await logAuditEvent(
       'Pustakawan',
       'PUSTAKAWAN',
@@ -137,7 +141,7 @@ export const PustakawanViews: React.FC<PustakawanViewsProps> = ({ activeTab, set
 
     // Create Notification
     try {
-      await addDoc(collection(db, 'notifications'), {
+      await saveOrQueueRecord('notifications', 'ADD', {
         targetRole: 'PUSTAKAWAN',
         title: '📖 Peminjaman Buku Baru',
         message: `${scannedSiswa.nama} meminjam "${scannedBuku.judul}". Jatuh tempo: ${dueDateStr}`,
@@ -151,9 +155,42 @@ export const PustakawanViews: React.FC<PustakawanViewsProps> = ({ activeTab, set
     }
 
     setSelectedReceipt(newTrx);
-    alert("Peminjaman Buku Berhasil & Struk Digital Terbit!");
+    
+    if (trxRes.synced) {
+      alert("✅ Peminjaman Buku Berhasil & Struk Digital Terbit! Data tersinkron ke Firestore.");
+    } else {
+      alert("⚡ [OFFLINE MODE] Peminjaman buku tersimpan di IndexedDB perangkat! Akan otomatis disinkronkan ke Firestore saat online kembali.");
+    }
+
     setScannedSiswa(null);
     setScannedBuku(null);
+  };
+
+  // Process Return Transaction
+  const handleProcessReturn = async (trx: TransaksiPerpus) => {
+    const fine = calculateFineForTransaction(trx);
+    const todayStr = new Date().toISOString().split('T')[0];
+
+    const updatedTrx: Partial<TransaksiPerpus> = {
+      status: 'DIKEMBALIKAN',
+      tanggalKembali: todayStr,
+      denda: fine
+    };
+
+    const res = await saveOrQueueRecord('transaksiPerpus', 'UPDATE', updatedTrx, trx.id);
+
+    // Find book and update stock
+    const book = bukuList.find(b => b.id === trx.bukuId);
+    if (book) {
+      const currentDipinjam = book.dipinjam || 0;
+      await saveOrQueueRecord('buku', 'UPDATE', { dipinjam: Math.max(0, currentDipinjam - 1) }, book.id);
+    }
+
+    if (res.synced) {
+      alert(`✅ Pengembalian buku "${trx.judulBuku}" berhasil diproses! Denda: Rp ${fine.toLocaleString('id-ID')}`);
+    } else {
+      alert(`⚡ [OFFLINE MODE] Pengembalian buku tersimpan di IndexedDB perangkat! Akan otomatis disinkronkan ke Firestore saat online.`);
+    }
   };
 
   // Auto-Calculate Overdue Fines
@@ -177,7 +214,7 @@ export const PustakawanViews: React.FC<PustakawanViewsProps> = ({ activeTab, set
       return;
     }
 
-    await updateDoc(doc(db, 'siswa', siswaId), { bebasPustaka: true });
+    const res = await saveOrQueueRecord('siswa', 'UPDATE', { bebasPustaka: true }, siswaId);
 
     // Log Audit Event
     const sFound = siswaList.find(s => s.id === siswaId);
@@ -189,13 +226,18 @@ export const PustakawanViews: React.FC<PustakawanViewsProps> = ({ activeTab, set
       { siswaId }
     );
 
-    alert("✅ Status 'BEBAS_PUSTAKA' berhasil diterbitkan untuk siswa!");
+    if (res.synced) {
+      alert("✅ Status 'BEBAS_PUSTAKA' berhasil diterbitkan untuk siswa!");
+    } else {
+      alert("⚡ [OFFLINE MODE] Status 'BEBAS_PUSTAKA' tersimpan di IndexedDB lokal & akan disinkronkan ke Firestore saat online.");
+    }
   };
 
   const filteredBuku = bukuList.filter(b => b.judul.toLowerCase().includes(searchOpac.toLowerCase()) || b.kodeBuku.toLowerCase().includes(searchOpac.toLowerCase()));
 
   return (
     <div className="space-y-6">
+      <OfflineSyncBanner moduleName="Perpustakaan" />
 
       {/* TAB 1: KATALOG BUKU DIGITAL (OPAC) & BARCODE GENERATOR */}
       {activeTab === 'pustakawan-katalog' && (
@@ -392,6 +434,7 @@ export const PustakawanViews: React.FC<PustakawanViewsProps> = ({ activeTab, set
                   <th className="p-3">Tgl Pinjam</th>
                   <th className="p-3">Jatuh Tempo</th>
                   <th className="p-3">Status / Denda</th>
+                  <th className="p-3 text-right">Aksi Pengembalian</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -404,7 +447,11 @@ export const PustakawanViews: React.FC<PustakawanViewsProps> = ({ activeTab, set
                       <td className="p-3 font-mono">{t.tanggalPinjam}</td>
                       <td className="p-3 font-mono text-rose-600 font-bold">{t.tanggalJatuhTempo}</td>
                       <td className="p-3">
-                        {fine > 0 ? (
+                        {t.status === 'DIKEMBALIKAN' ? (
+                          <span className="px-2.5 py-1 bg-slate-100 text-slate-700 font-bold rounded-md">
+                            Sudah Dikembalikan
+                          </span>
+                        ) : fine > 0 ? (
                           <span className="px-2.5 py-1 bg-rose-100 text-rose-800 font-black rounded-md font-mono">
                             TERLAMBAT (Denda: Rp {fine.toLocaleString('id-ID')})
                           </span>
@@ -412,6 +459,17 @@ export const PustakawanViews: React.FC<PustakawanViewsProps> = ({ activeTab, set
                           <span className="px-2.5 py-1 bg-emerald-100 text-emerald-800 font-bold rounded-md">
                             Tepat Waktu / Rp 0
                           </span>
+                        )}
+                      </td>
+                      <td className="p-3 text-right">
+                        {t.status !== 'DIKEMBALIKAN' && (
+                          <button
+                            onClick={() => handleProcessReturn(t)}
+                            className="px-3 py-1.5 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-lg text-xs flex items-center gap-1 ml-auto"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5" />
+                            Proses Pengembalian
+                          </button>
                         )}
                       </td>
                     </tr>

@@ -4,7 +4,9 @@ import { collection, onSnapshot, doc, setDoc, addDoc } from 'firebase/firestore'
 import { UKSScreening, UKSPasien, Siswa, Rombel, Absensi, AppSettings } from '../../types';
 import { sendFonnteWA } from '../../services/fonnteService';
 import { logAuditEvent } from '../../services/auditService';
-import { downloadElementAsPDF } from '../../services/pdfService';
+import { downloadElementAsPDF, printElement } from '../../services/pdfService';
+import { saveOrQueueRecord } from '../../services/indexedDbSyncQueue';
+import { OfflineSyncBanner } from '../OfflineSyncBanner';
 import {
   Stethoscope,
   Activity,
@@ -102,9 +104,14 @@ export const UKSViews: React.FC<UKSViewsProps> = ({ activeTab, settings }) => {
       catatanPetugas
     };
 
-    await setDoc(doc(db, 'uksScreening', scrId), payload);
+    const res = await saveOrQueueRecord('uksScreening', 'SET', payload, scrId);
     setShowAddScreening(false);
-    alert(`Data Screening ${s.nama} disimpan! IMT Skor: ${score} (${category}). Otomatis tersinkron ke Wali Kelas!`);
+
+    if (res.synced) {
+      alert(`✅ Data Screening ${s.nama} disimpan! IMT Skor: ${score} (${category}). Otomatis tersinkron ke Wali Kelas!`);
+    } else {
+      alert(`⚡ [OFFLINE MODE] Data Screening ${s.nama} tersimpan di IndexedDB perangkat! Akan disinkronkan ke Firestore saat koneksi internet aktif.`);
+    }
   };
 
   // Handle Log Patient UKS with AUTO REALTIME SYNC 'DI_UKS' & WA TRIGGER!
@@ -133,7 +140,7 @@ export const UKSViews: React.FC<UKSViewsProps> = ({ activeTab, settings }) => {
       waNotified: true
     };
 
-    await setDoc(doc(db, 'uksPasien', pasId), payload);
+    const resPasien = await saveOrQueueRecord('uksPasien', 'SET', payload, pasId);
 
     // REAL-TIME SYNC: Update today's attendance status to 'DI_UKS' in Absensi collection!
     const absId = `ABS-${s.id}-${todayStr}`;
@@ -148,12 +155,12 @@ export const UKSViews: React.FC<UKSViewsProps> = ({ activeTab, settings }) => {
       keterangan: `Sedang dirawat di UKS (${keluhan})`,
       waNotified: true
     };
-    await setDoc(doc(db, 'absensi', absId), absUpdate, { merge: true });
+    await saveOrQueueRecord('absensi', 'SET', absUpdate, absId, true);
 
     // AUTO-TRIGGER WA FONNTE TO PARENT!
     const waMsg = `Yth. Bpk/Ibu ${s.namaOrtu},\n\nPemberitahuan UKS ${settings.schoolName}:\nAnanda *${s.nama}* saat ini berada di ruang UKS sekolah.\n• Keluhan: *${keluhan}*\n• Penanganan: *${tindakan}*\n• Status: *${statusPasien}*\n\nTerima kasih.`;
 
-    if (s.noWaOrtu) {
+    if (s.noWaOrtu && typeof navigator !== 'undefined' && navigator.onLine) {
       await sendFonnteWA({
         target: s.noWaOrtu,
         message: waMsg,
@@ -172,7 +179,7 @@ export const UKSViews: React.FC<UKSViewsProps> = ({ activeTab, settings }) => {
 
     // Create Notification for UKS & Admin
     try {
-      await addDoc(collection(db, 'notifications'), {
+      await saveOrQueueRecord('notifications', 'ADD', {
         targetRole: 'UKS',
         title: '🩺 Pasien UKS Baru',
         message: `${s.nama} (${s.rombelNama}) masuk UKS dengan keluhan ${keluhan}. Status: ${statusPasien}`,
@@ -186,11 +193,17 @@ export const UKSViews: React.FC<UKSViewsProps> = ({ activeTab, settings }) => {
     }
 
     setShowAddPasien(false);
-    alert(`Log Pasien UKS Berhasil Disimpan & Status Presensi 'DI_UKS' Otomatis Tersinkron ke Guru Kelas! Pesan WA terkirim ke Ortu.`);
+
+    if (resPasien.synced) {
+      alert(`✅ Log Pasien UKS Berhasil Disimpan & Status Presensi 'DI_UKS' Otomatis Tersinkron ke Guru Kelas! Pesan WA terkirim ke Ortu.`);
+    } else {
+      alert(`⚡ [OFFLINE MODE] Log Pasien UKS & Presensi 'DI_UKS' tersimpan di IndexedDB perangkat! Akan disinkronkan ke Firestore saat online.`);
+    }
   };
 
   return (
     <div className="space-y-6">
+      <OfflineSyncBanner moduleName="UKS (Kesehatan Sekolah)" />
 
       {/* TAB 1: SCREENING TUMBUH KEMBANG (AUTO IMT) */}
       {activeTab === 'uks-screening' && (
@@ -203,16 +216,22 @@ export const UKSViews: React.FC<UKSViewsProps> = ({ activeTab, settings }) => {
               </h2>
               <p className="text-xs text-slate-500 mt-1">Sistem mengkalkulasi skor & kategori IMT secara otomatis saat tinggi & berat badan diinput.</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => printElement('report-uks-pdf', `Laporan_Kesehatan_UKS_${settings.schoolName.replace(/\s+/g, '_')}`)}
+                className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-xs transition-all"
+              >
+                <Printer className="w-4 h-4 text-amber-300" /> Cetak ke Printer (Fisik)
+              </button>
               <button
                 onClick={() => downloadElementAsPDF('report-uks-pdf', `Laporan_Kesehatan_UKS_${settings.schoolName.replace(/\s+/g, '_')}.pdf`)}
                 className="px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-xs transition-all"
               >
-                <Printer className="w-4 h-4 text-amber-400" /> Cetak Laporan UKS (PDF)
+                <Printer className="w-4 h-4 text-amber-400" /> Download PDF Laporan
               </button>
               <button
                 onClick={() => setShowAddScreening(true)}
-                className="px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-xs"
+                className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-xs"
               >
                 <Plus className="w-4 h-4" /> Input Screening Baru
               </button>
@@ -490,7 +509,7 @@ export const UKSViews: React.FC<UKSViewsProps> = ({ activeTab, settings }) => {
               <p><strong>Total Penanganan Pasien UKS:</strong> {pasienList.length} Kejadian</p>
             </div>
             <div>
-              <p><strong>Kategori IMT Ideal / Normal:</strong> {screeningList.filter(s => s.kategoriIMT === 'SANGAT_IDEAL' || s.kategoriIMT === 'IDEAL').length} Siswa</p>
+              <p><strong>Kategori IMT Ideal / Normal:</strong> {screeningList.filter(s => s.imtKategori === 'Normal').length} Siswa</p>
               <p><strong>Pasien Rujukan / Dijemput Ortu:</strong> {pasienList.filter(p => p.statusPasien === 'DIRUJUK' || p.statusPasien === 'DIJEMPUT_ORTU').length} Siswa</p>
             </div>
           </div>
@@ -514,9 +533,9 @@ export const UKSViews: React.FC<UKSViewsProps> = ({ activeTab, settings }) => {
                   <tr key={sc.id || idx} className="border-b border-slate-200">
                     <td className="p-1.5 border-r text-center">{idx + 1}</td>
                     <td className="p-1.5 border-r font-semibold">{sc.namaSiswa}</td>
-                    <td className="p-1.5 border-r">{sc.tbCm} cm / {sc.bbKg} kg</td>
-                    <td className="p-1.5 border-r font-mono">{sc.imTScore}</td>
-                    <td className="p-1.5 border-r font-bold">{sc.kategoriIMT}</td>
+                    <td className="p-1.5 border-r">{sc.tinggiBadan} cm / {sc.beratBadan} kg</td>
+                    <td className="p-1.5 border-r font-mono">{sc.imtSkor}</td>
+                    <td className="p-1.5 border-r font-bold">{sc.imtKategori}</td>
                     <td className="p-1.5">{sc.kondisiGigi} • {sc.kondisiMata}</td>
                   </tr>
                 ))}

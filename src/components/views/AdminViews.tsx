@@ -1341,6 +1341,18 @@ Kepala Sekolah: ${settings.kepsekNama} (NIP. ${settings.kepsekNip})
                   Logo resmi sekolah yang akan ditampilkan di Header, Login, Kartu Digital, dan Kop Laporan.
                 </p>
 
+                <label className="font-semibold text-slate-700 block pt-2">URL / Foto Latar Halaman Login (Gedung SD)</label>
+                <input
+                  type="url"
+                  value={settings.schoolBgUrl || ''}
+                  onChange={(e) => onUpdateSettings({ ...settings, schoolBgUrl: e.target.value })}
+                  className="w-full px-3.5 py-2.5 border rounded-xl font-mono text-xs"
+                  placeholder="https://..."
+                />
+                <p className="text-[11px] text-slate-500">
+                  Foto gedung sekolah yang ditampilkan secara artistik dengan efek buram (blurred background) di halaman login awal.
+                </p>
+
                 <label className="font-semibold text-slate-700 block pt-2">Alamat Sekolah</label>
                 <textarea
                   value={settings.schoolAddress || ''}
