@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged, db } from './lib/firebase';
 import { doc, getDoc, setDoc, onSnapshot } from 'firebase/firestore';
 import { UserProfile, Role, AppSettings } from './types';
@@ -12,7 +12,12 @@ import { GuruMapelViews } from './components/views/GuruMapelViews';
 import { PustakawanViews } from './components/views/PustakawanViews';
 import { UKSViews } from './components/views/UKSViews';
 import { PublicStudentPortal } from './components/views/PublicStudentPortal';
+import { StudentCardModal } from './components/StudentCardModal';
+import { KalenderAkademikModal } from './components/KalenderAkademikModal';
 import { seedDatabaseIfEmpty } from './services/seedData';
+import { logAuditEvent } from './services/auditService';
+import { useInactivityLogout } from './hooks/useInactivityLogout';
+import { InactivityModal } from './components/InactivityModal';
 import { motion, AnimatePresence } from 'motion/react';
 import { LogIn, School, ShieldAlert, QrCode } from 'lucide-react';
 
@@ -21,6 +26,9 @@ export default function App() {
   const [activeRole, setActiveRole] = useState<Role>('ADMIN');
   const [activeTab, setActiveTab] = useState<string>('admin-users');
   const [showPublicPortal, setShowPublicPortal] = useState<boolean>(false);
+  const [isKalenderOpen, setIsKalenderOpen] = useState<boolean>(false);
+  const [isStudentCardOpen, setIsStudentCardOpen] = useState<boolean>(false);
+  const [selectedSiswaIdForCard, setSelectedSiswaIdForCard] = useState<string | undefined>(undefined);
   const [settings, setSettings] = useState<AppSettings>({
     fonnteToken: 'mBya#Xq@4Y!p9zK12345',
     schoolName: 'SD Negeri Neglasari 02',
@@ -58,33 +66,49 @@ export default function App() {
       (err) => console.warn('Firestore settings listener error:', err)
     );
 
-    // Subscribe Auth
+    // Subscribe Auth & User Document for real-time profile & theme sync
+    let unsubUserDoc: (() => void) | null = null;
+
     const unsubAuth = onAuthStateChanged(auth, async (fbUser) => {
+      if (unsubUserDoc) {
+        unsubUserDoc();
+        unsubUserDoc = null;
+      }
+
       if (fbUser) {
         const userRef = doc(db, 'users', fbUser.uid);
-        const userSnap = await getDoc(userRef);
+        unsubUserDoc = onSnapshot(userRef, async (userSnap) => {
+          if (userSnap.exists()) {
+            const userProfile = userSnap.data() as UserProfile;
+            setCurrentUser(userProfile);
+            setActiveRole(prev => prev || userProfile.activeRole || 'ADMIN');
 
-        let userProfile: UserProfile;
-        if (userSnap.exists()) {
-          userProfile = userSnap.data() as UserProfile;
-        } else {
-          // Default multi-role assignment for new Google login user (e.g. Admin + Guru Kelas + Pustakawan for full test capability)
-          userProfile = {
-            uid: fbUser.uid,
-            email: fbUser.email || 'user@sd.sch.id',
-            displayName: fbUser.displayName || 'Guru / Staf SD',
-            photoURL: fbUser.photoURL || '',
-            roles: ['ADMIN', 'KEPSEK', 'GURU_KELAS', 'GURU_MAPEL', 'PUSTAKAWAN', 'UKS'],
-            activeRole: 'ADMIN',
-            rombelBinaan: 'Kelas 1A',
-            mapelBinaan: ['PJOK', 'Pendidikan Agama Islam']
-          };
-          await setDoc(userRef, userProfile);
-        }
-
-        setCurrentUser(userProfile);
-        setActiveRole(userProfile.activeRole || 'ADMIN');
-        setActiveTab(DEFAULT_TABS[userProfile.activeRole || 'ADMIN']);
+            // Apply theme preference from Firestore if present
+            if (userProfile.themePreference) {
+              if (userProfile.themePreference === 'dark') {
+                document.documentElement.classList.add('dark');
+              } else {
+                document.documentElement.classList.remove('dark');
+              }
+              localStorage.setItem('sisfo_theme', userProfile.themePreference);
+            }
+          } else {
+            // New user default profile creation
+            const initialTheme = (localStorage.getItem('sisfo_theme') as 'light' | 'dark') || 'light';
+            const userProfile: UserProfile = {
+              uid: fbUser.uid,
+              email: fbUser.email || 'user@sd.sch.id',
+              displayName: fbUser.displayName || 'Guru / Staf SD',
+              photoURL: fbUser.photoURL || '',
+              roles: ['ADMIN', 'KEPSEK', 'GURU_KELAS', 'GURU_MAPEL', 'PUSTAKAWAN', 'UKS'],
+              activeRole: 'ADMIN',
+              rombelBinaan: 'Kelas 1A',
+              mapelBinaan: ['PJOK', 'Pendidikan Agama Islam'],
+              themePreference: initialTheme
+            };
+            await setDoc(userRef, userProfile);
+          }
+        });
       } else {
         setCurrentUser(null);
       }
@@ -93,6 +117,7 @@ export default function App() {
     return () => {
       unsubConfig();
       unsubAuth();
+      if (unsubUserDoc) unsubUserDoc();
     };
   }, []);
 
@@ -107,10 +132,17 @@ export default function App() {
   };
 
   // Handle Logout
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     await signOut(auth);
     setCurrentUser(null);
-  };
+  }, []);
+
+  // 30-Minute Inactivity Auto-Logout Hook
+  const { remainingSeconds, showWarningModal, extendSession } = useInactivityLogout({
+    timeoutMs: 30 * 60 * 1000, // 30 Minutes Security Timeout
+    enabled: !!currentUser,
+    onLogout: handleLogout
+  });
 
   // Switch Role
   const handleSwitchRole = async (newRole: Role) => {
@@ -128,6 +160,17 @@ export default function App() {
   const handleUpdateSettings = async (newConfig: AppSettings) => {
     setSettings(newConfig);
     await setDoc(doc(db, 'settings', 'config'), newConfig);
+    await logAuditEvent(
+      currentUser?.displayName || 'Administrator / Operator TU',
+      activeRole || 'ADMIN',
+      'CONFIG_UPDATE',
+      `Memperbarui konfigurasi identitas & pengaturan sekolah: ${newConfig.schoolName}`,
+      {
+        schoolName: newConfig.schoolName,
+        kepsekNama: newConfig.kepsekNama,
+        dendaPerHari: newConfig.dendaPerHari
+      }
+    );
   };
 
   return (
@@ -147,6 +190,11 @@ export default function App() {
           setActiveTab(tabId);
         }}
         onOpenPublicPortal={() => setShowPublicPortal(true)}
+        onOpenKalender={() => setIsKalenderOpen(true)}
+        onOpenKartuSiswa={currentUser && activeRole === 'ADMIN' ? () => {
+          setSelectedSiswaIdForCard(undefined);
+          setIsStudentCardOpen(true);
+        } : undefined}
       />
 
       {showPublicPortal ? (
@@ -178,6 +226,11 @@ export default function App() {
                     activeTab={activeTab}
                     settings={settings}
                     onUpdateSettings={handleUpdateSettings}
+                    onOpenStudentCardModal={(siswaId) => {
+                      setSelectedSiswaIdForCard(siswaId);
+                      setIsStudentCardOpen(true);
+                    }}
+                    onOpenKalenderModal={() => setIsKalenderOpen(true)}
                   />
                 )}
 
@@ -200,6 +253,7 @@ export default function App() {
                   <GuruMapelViews
                     activeTab={activeTab}
                     user={currentUser}
+                    settings={settings}
                   />
                 )}
 
@@ -287,6 +341,29 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* 30-Minute Inactivity Warning Modal */}
+      <InactivityModal
+        isOpen={showWarningModal}
+        remainingSeconds={remainingSeconds}
+        onExtendSession={extendSession}
+        onLogoutNow={handleLogout}
+      />
+
+      {/* Centralized Academic Calendar Modal */}
+      <KalenderAkademikModal
+        isOpen={isKalenderOpen}
+        onClose={() => setIsKalenderOpen(false)}
+        currentUserRole={currentUser ? activeRole : undefined}
+        currentUserName={currentUser?.displayName}
+      />
+
+      {/* Student ID Card Barcode & Library Card Generator Modal */}
+      <StudentCardModal
+        isOpen={isStudentCardOpen}
+        onClose={() => setIsStudentCardOpen(false)}
+        initialSiswaId={selectedSiswaIdForCard}
+      />
 
     </div>
   );

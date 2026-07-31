@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { db } from '../lib/firebase';
+import { doc, setDoc } from 'firebase/firestore';
 import { UserProfile, Role } from '../types';
 import { NotificationComponent } from './NotificationComponent';
-import { LogIn, LogOut, School, ShieldCheck, UserCheck, ChevronDown, Sun, Moon, QrCode } from 'lucide-react';
+import { LogIn, LogOut, School, ShieldCheck, UserCheck, ChevronDown, Sun, Moon, QrCode, Calendar, CreditCard } from 'lucide-react';
 
 interface HeaderProps {
   user: UserProfile | null;
@@ -13,6 +15,8 @@ interface HeaderProps {
   schoolLogoUrl?: string;
   onSelectTab?: (tab: string) => void;
   onOpenPublicPortal?: () => void;
+  onOpenKalender?: () => void;
+  onOpenKartuSiswa?: () => void;
 }
 
 const ROLE_LABELS: Record<Role, { label: string; bg: string; text: string }> = {
@@ -34,15 +38,26 @@ export const Header: React.FC<HeaderProps> = ({
   schoolLogoUrl,
   onSelectTab,
   onOpenPublicPortal,
+  onOpenKalender,
+  onOpenKartuSiswa,
 }) => {
   const [logoError, setLogoError] = useState(false);
+  const [isRoleMenuOpen, setIsRoleMenuOpen] = useState(false);
 
-  // Theme State
+  // Theme State initialized from user profile if available, or localStorage/system
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (user?.themePreference) return user.themePreference;
     const saved = localStorage.getItem('sisfo_theme');
     if (saved === 'dark' || saved === 'light') return saved;
     return typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
   });
+
+  // Sync theme when user object updates with themePreference from Firestore
+  useEffect(() => {
+    if (user?.themePreference && user.themePreference !== theme) {
+      setTheme(user.themePreference);
+    }
+  }, [user?.themePreference]);
 
   useEffect(() => {
     if (theme === 'dark') {
@@ -53,8 +68,24 @@ export const Header: React.FC<HeaderProps> = ({
     localStorage.setItem('sisfo_theme', theme);
   }, [theme]);
 
-  const toggleTheme = () => {
-    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  const toggleTheme = async () => {
+    const newTheme = theme === 'light' ? 'dark' : 'light';
+    setTheme(newTheme);
+    if (newTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('sisfo_theme', newTheme);
+
+    // Save user's theme preference in Firestore
+    if (user?.uid) {
+      try {
+        await setDoc(doc(db, 'users', user.uid), { themePreference: newTheme }, { merge: true });
+      } catch (err) {
+        console.warn('Gagal menyimpan preferensi tema di Firestore:', err);
+      }
+    }
   };
 
   return (
@@ -85,7 +116,31 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         {/* Right: Auth, Real-time Notification, Public Portal & Theme Toggle */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2">
+
+          {/* Academic Calendar Button */}
+          {onOpenKalender && (
+            <button
+              onClick={onOpenKalender}
+              title="Buka Kalender Akademik Terpusat"
+              className="px-2.5 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/80 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 font-bold text-xs flex items-center gap-1.5 transition-all shadow-2xs"
+            >
+              <Calendar className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <span className="hidden lg:inline">Kalender Akademik</span>
+            </button>
+          )}
+
+          {/* Student ID Card Generator Button */}
+          {onOpenKartuSiswa && (
+            <button
+              onClick={onOpenKartuSiswa}
+              title="Cetak Kartu Pelajar & Perpustakaan Digital"
+              className="px-2.5 py-1.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/80 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 font-bold text-xs flex items-center gap-1.5 transition-all shadow-2xs"
+            >
+              <CreditCard className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <span className="hidden lg:inline">Kartu Pelajar</span>
+            </button>
+          )}
 
           {/* Public Portal QR Access Button */}
           {onOpenPublicPortal && (
@@ -95,7 +150,7 @@ export const Header: React.FC<HeaderProps> = ({
               className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 transition-all shadow-md shadow-indigo-600/30"
             >
               <QrCode className="w-4 h-4 text-amber-300" />
-              <span className="hidden sm:inline">Portal Siswa (QR)</span>
+              <span className="hidden sm:inline">Portal Siswa</span>
             </button>
           )}
 
@@ -125,8 +180,12 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex items-center gap-3">
               
               {/* Role Switcher Selector Dropdown */}
-              <div className="relative group">
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-750 transition-colors">
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setIsRoleMenuOpen(!isRoleMenuOpen)}
+                  className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-750 transition-colors"
+                >
                   <ShieldCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                   <span className="text-slate-600 dark:text-slate-300">Role:</span>
                   <span className={`px-2 py-0.5 rounded-md font-bold ${ROLE_LABELS[activeRole]?.bg || 'bg-slate-200 dark:bg-slate-700'} ${ROLE_LABELS[activeRole]?.text || 'text-slate-800 dark:text-slate-200'}`}>
@@ -137,27 +196,34 @@ export const Header: React.FC<HeaderProps> = ({
                       {user.roles.length} Role
                     </span>
                   )}
-                  <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-                </div>
+                  <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isRoleMenuOpen ? 'rotate-180' : ''}`} />
+                </button>
 
                 {/* Dropdown Menu for Switching Roles */}
-                <div className="absolute right-0 mt-1 w-64 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl py-2 hidden group-hover:block group-focus-within:block z-50">
-                  <div className="px-3 py-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-slate-700">
-                    Pilih Peran Akses (Multi-Role)
+                {isRoleMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl py-2 z-50 animate-in fade-in zoom-in-95 duration-150">
+                    <div className="px-3 py-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
+                      <span>Pilih Peran Akses</span>
+                      <span className="text-[10px] text-amber-500 font-bold">Multi-Role Active</span>
+                    </div>
+                    {user.roles.map((r) => (
+                      <button
+                        key={r}
+                        type="button"
+                        onClick={() => {
+                          onSwitchRole(r);
+                          setIsRoleMenuOpen(false);
+                        }}
+                        className={`w-full text-left px-3.5 py-2.5 text-xs flex items-center justify-between hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors ${
+                          r === activeRole ? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-300 font-bold' : 'text-slate-700 dark:text-slate-200'
+                        }`}
+                      >
+                        <span>{ROLE_LABELS[r]?.label || r}</span>
+                        {r === activeRole && <UserCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />}
+                      </button>
+                    ))}
                   </div>
-                  {user.roles.map((r) => (
-                    <button
-                      key={r}
-                      onClick={() => onSwitchRole(r)}
-                      className={`w-full text-left px-3 py-2 text-xs flex items-center justify-between hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors ${
-                        r === activeRole ? 'bg-blue-50 dark:bg-blue-600/20 text-blue-600 dark:text-blue-300 font-semibold' : 'text-slate-700 dark:text-slate-200'
-                      }`}
-                    >
-                      <span>{ROLE_LABELS[r]?.label || r}</span>
-                      {r === activeRole && <UserCheck className="w-4 h-4 text-blue-600 dark:text-blue-400" />}
-                    </button>
-                  ))}
-                </div>
+                )}
               </div>
 
               {/* User Avatar & Logout */}

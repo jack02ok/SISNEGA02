@@ -1,18 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../lib/firebase';
 import { collection, onSnapshot, doc, setDoc, addDoc, deleteDoc } from 'firebase/firestore';
-import { Siswa, JurnalKBM, Penilaian, Rombel, UserProfile, JadwalPelajaran } from '../../types';
+import { Siswa, JurnalKBM, Penilaian, Rombel, UserProfile, JadwalPelajaran, AppSettings } from '../../types';
 import { cacheStudentRoster, getCachedStudentRoster, cacheRombelList, getCachedRombelList, subscribeOnlineStatus, isOnline as checkIsOnline } from '../../services/offlineStorage';
-import { BookOpen, GraduationCap, Plus, Save, WifiOff, Calendar, Clock, Trash2, MapPin, Tag, Filter } from 'lucide-react';
+import { ProtaPromesAgendaManager } from '../ProtaPromesAgendaManager';
+import { downloadElementAsPDF } from '../../services/pdfService';
+import { exportNilaiToExcel, exportJurnalToExcel } from '../../services/excelExportService';
+import { BookOpen, GraduationCap, Plus, Save, WifiOff, Calendar, Clock, Trash2, MapPin, Tag, Filter, FileSpreadsheet, Printer } from 'lucide-react';
 
 interface GuruMapelViewsProps {
   activeTab: string;
   user: UserProfile;
+  settings: AppSettings;
 }
 
 const HARI_LIST = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'] as const;
 
-export const GuruMapelViews: React.FC<GuruMapelViewsProps> = ({ activeTab, user }) => {
+export const GuruMapelViews: React.FC<GuruMapelViewsProps> = ({ activeTab, user, settings }) => {
   const [selectedRombel, setSelectedRombel] = useState('rombel-1a');
   const [selectedMapel, setSelectedMapel] = useState(user.mapelBinaan?.[0] || 'PJOK');
 
@@ -175,7 +179,12 @@ export const GuruMapelViews: React.FC<GuruMapelViewsProps> = ({ activeTab, user 
       )}
 
       {/* Rombel & Mapel Switcher Bar (for Jurnal & Nilai tabs) */}
-      {activeTab !== 'mapel-jadwal' && (
+      {activeTab !== 'mapel-jadwal' &&
+       activeTab !== 'mapel-cp' &&
+       activeTab !== 'mapel-agenda-harian' &&
+       activeTab !== 'mapel-prota' &&
+       activeTab !== 'mapel-promes' &&
+       activeTab !== 'mapel-agenda-kbm' && (
         <div className="bg-white p-4 rounded-2xl border border-slate-200 flex flex-wrap items-center justify-between gap-4 text-xs">
           <div className="flex items-center gap-3">
             <label className="font-bold text-slate-700">Mata Pelajaran:</label>
@@ -204,20 +213,48 @@ export const GuruMapelViews: React.FC<GuruMapelViewsProps> = ({ activeTab, user 
         </div>
       )}
 
+      {/* TAB: CAPAIAN PEMBELAJARAN, PROTA, PROMES & AGENDA HARIAN GURU MAPEL */}
+      {(activeTab === 'mapel-cp' || activeTab === 'mapel-agenda-harian' || activeTab === 'mapel-prota' || activeTab === 'mapel-promes' || activeTab === 'mapel-agenda-kbm') && (
+        <ProtaPromesAgendaManager
+          user={user}
+          settings={settings}
+          role="GURU_MAPEL"
+          rombelList={rombelList}
+          initialTab={
+            activeTab === 'mapel-cp'
+              ? 'CAPAIAN_PEMBELAJARAN'
+              : activeTab === 'mapel-prota'
+              ? 'PROTA'
+              : activeTab === 'mapel-promes'
+              ? 'PROMES'
+              : 'AGENDA_HARIAN'
+          }
+        />
+      )}
+
       {/* TAB 1: JURNAL & PRESENSI MAPEL KHUSUS */}
       {activeTab === 'mapel-jurnal' && (
         <div className="bg-white rounded-2xl p-6 border border-slate-200 space-y-4">
-          <div className="flex justify-between items-center border-b pb-3">
+          <div className="flex flex-wrap justify-between items-center gap-2 border-b pb-3">
             <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
               <BookOpen className="w-5 h-5 text-emerald-600" />
               Jurnal & Presensi KBM Mapel Khusus ({selectedMapel})
             </h2>
-            <button
-              onClick={() => setShowAddJurnal(true)}
-              className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-bold flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" /> Input Jurnal Mapel
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => exportJurnalToExcel(jurnalList.filter(j => j.mapel === selectedMapel), `Laporan_Jurnal_${selectedMapel.replace(/\s+/g, '_')}.xlsx`)}
+                className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all"
+                title="Ekspor Laporan Jurnal Pembelajaran Mapel ke Excel"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-200" /> Ekspor Excel
+              </button>
+              <button
+                onClick={() => setShowAddJurnal(true)}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-xs"
+              >
+                <Plus className="w-4 h-4" /> Input Jurnal Mapel
+              </button>
+            </div>
           </div>
 
           <div className="space-y-3">
@@ -253,10 +290,19 @@ export const GuruMapelViews: React.FC<GuruMapelViewsProps> = ({ activeTab, user 
       {/* TAB 2: INPUT NILAI MAPEL KHUSUS */}
       {activeTab === 'mapel-nilai' && (
         <div className="bg-white rounded-2xl p-6 border border-slate-200 space-y-4">
-          <h2 className="text-base font-bold text-slate-800 flex items-center gap-2 border-b pb-3">
-            <GraduationCap className="w-5 h-5 text-emerald-600" />
-            Input Nilai Harian / PTS ({selectedMapel})
-          </h2>
+          <div className="flex flex-wrap justify-between items-center gap-2 border-b pb-3">
+            <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+              <GraduationCap className="w-5 h-5 text-emerald-600" />
+              Input Nilai Harian / PTS ({selectedMapel})
+            </h2>
+            <button
+              onClick={() => exportNilaiToExcel(penilaianList.filter(p => p.mapel === selectedMapel), currentSiswa, `Laporan_Nilai_${selectedMapel.replace(/\s+/g, '_')}.xlsx`)}
+              className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-xs transition-all"
+              title="Ekspor Laporan Nilai Mapel ke Excel"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-200" /> Ekspor Excel
+            </button>
+          </div>
 
           <table className="w-full text-left text-xs">
             <thead>

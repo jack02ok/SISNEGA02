@@ -10,6 +10,7 @@ export interface UserProfile {
   rombelBinaan?: string; // e.g., "1A"
   mapelBinaan?: string[]; // e.g., ["PJOK", "Agama Islam"]
   nip?: string;
+  themePreference?: 'light' | 'dark';
 }
 
 export interface Siswa {
@@ -61,6 +62,8 @@ export interface JurnalKBM {
   tanggal: string; // YYYY-MM-DD
   jamKe: string; // e.g., "1 - 3"
   materi: string;
+  cpId?: string;
+  cpKode?: string;
   catatanBKB?: string; // Bimbingan Konseling & Perilaku
   createdAt?: string;
 }
@@ -79,6 +82,17 @@ export interface Penilaian {
   catatanWali?: string;
   ekskul?: string;
   nilaiEkskul?: string;
+}
+
+export interface PoinPelanggaran {
+  id: string;
+  siswaId: string;
+  namaSiswa: string;
+  rombelNama?: string;
+  tanggal: string;
+  jenis: 'PELANGGARAN' | 'PRESTASI';
+  poin: number;
+  keterangan: string;
 }
 
 export interface UKSScreening {
@@ -242,11 +256,15 @@ export interface AppSettings {
 export interface AuditLog {
   id?: string;
   timestamp: string;
-  actorName: string;
-  actorRole: Role;
-  actionType: 'PERPUS_PINJAM' | 'PERPUS_KEMBALI' | 'UKS_PASIEN' | 'DISPOSISI_SURAT' | 'MUTASI' | 'INVENTARIS_PERBAIKAN' | 'ABSENSI_ALERT' | 'SYSTEM';
-  description: string;
+  actorName?: string;
+  actorRole?: Role | string;
+  actionType?: 'PERPUS_PINJAM' | 'PERPUS_KEMBALI' | 'UKS_PASIEN' | 'DISPOSISI_SURAT' | 'MUTASI' | 'INVENTARIS_PERBAIKAN' | 'ABSENSI_ALERT' | 'SYSTEM' | 'ROLE_CHANGE' | 'CONFIG_UPDATE' | string;
+  description?: string;
   metadata?: Record<string, any>;
+  userName?: string;
+  role?: string;
+  action?: string;
+  details?: string;
 }
 
 export interface AppNotification {
@@ -266,5 +284,81 @@ export interface JadwalPiket {
   hari: 'Senin' | 'Selasa' | 'Rabu' | 'Kamis' | 'Jumat' | 'Sabtu';
   siswaIds: string[];
   siswaNames: string[];
+}
+
+export interface CapaianPembelajaran {
+  id: string;
+  kodeCP: string; // e.g. "CP-IND-01"
+  fase: string; // "Fase A (Kelas 1-2)", "Fase B (Kelas 3-4)", "Fase C (Kelas 5-6)"
+  mapel: string;
+  elemen: string; // "Membaca & Memirsa", "Menulis", "Keterampilan Proses", etc.
+  deskripsiCP: string;
+  tujuanPembelajaranList: string[]; // List of TP derived from CP
+  tahunAjaran?: string;
+  semester?: '1' | '2' | 'SEMUA';
+  guruId?: string;
+  guruNama?: string;
+  createdAt?: string;
+}
+
+export interface ProtaItem {
+  id: string;
+  cpId?: string;
+  cpKode?: string;
+  guruId: string;
+  guruNama?: string;
+  rombelId: string;
+  rombelNama?: string;
+  mapel: string;
+  tahunAjaran: string; // e.g. "2025/2026"
+  semester: '1' | '2' | 'SEMUA';
+  elementCP: string; // Elemen Capaian Pembelajaran
+  tujuanPembelajaran: string; // TP
+  alokasiJP: number; // Total Jam Pelajaran (JP)
+  targetBulan: string; // e.g., "Juli", "Agustus"
+  keterangan?: string;
+  createdAt?: string;
+}
+
+export interface PromesItem {
+  id: string;
+  protaId?: string;
+  cpId?: string;
+  cpKode?: string;
+  guruId: string;
+  rombelId: string;
+  rombelNama?: string;
+  mapel: string;
+  tahunAjaran: string;
+  semester: '1' | '2';
+  materiPelajaran: string;
+  tujuanPembelajaran: string;
+  alokasiJP: number;
+  distribusiMinggu: Record<string, number>; // e.g. { "Juli-W3": 2, "Juli-W4": 2 }
+  keterangan?: string;
+  createdAt?: string;
+}
+
+export interface AgendaHarianGuru {
+  id: string;
+  cpId?: string;
+  cpKode?: string;
+  cpElemen?: string;
+  guruId: string;
+  guruNama: string;
+  rombelId: string;
+  rombelNama: string;
+  mapel: string;
+  tanggal: string; // YYYY-MM-DD
+  hari: string; // e.g., "Senin"
+  jamKe: string; // e.g., "1 - 2"
+  materiPokok: string;
+  tujuanPembelajaran?: string;
+  kegiatanPembelajaran?: string;
+  pencapaianSiswa?: string;
+  status: 'TERLAKSANA' | 'TERTUNDA' | 'LIBUR_AKADEMIK' | 'DIUBAH';
+  catatanKendala?: string;
+  syncedToJurnal?: boolean;
+  createdAt?: string;
 }
 

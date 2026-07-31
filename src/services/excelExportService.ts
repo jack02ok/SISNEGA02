@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { Absensi, Penilaian, InventarisRombel, Siswa, Buku } from '../types';
+import { Absensi, Penilaian, InventarisRombel, Siswa, Buku, TransaksiPerpus, UKSScreening, JurnalKBM, PoinPelanggaran } from '../types';
 
 /**
  * Helper to export any array of objects to an .xlsx file using SheetJS
@@ -83,6 +83,111 @@ export function exportInventarisToExcel(inventarisList: InventarisRombel[], file
   }));
 
   exportToExcel(formattedData, filename, 'Inventaris Sarpras');
+}
+
+/**
+ * Export Katalag Buku Perpustakaan to Excel
+ */
+export function exportBukuToExcel(bukuList: Buku[], filename: string = 'Katalog_Buku_Perpustakaan.xlsx') {
+  const formattedData = bukuList.map((b, idx) => ({
+    'No': idx + 1,
+    'Kode ISBN / ID': b.kodeBuku || b.id,
+    'Judul Buku': b.judul,
+    'Pengarang': b.pengarang || '-',
+    'Penerbit': b.penerbit || '-',
+    'Kategori': b.kategori || 'Umum',
+    'Total Stok': b.stok || 0,
+    'Sedang Dipinjam': b.dipinjam || 0,
+    'Tersedia': (b.stok || 0) - (b.dipinjam || 0),
+    'Lokasi Rak': b.lokasi || '-'
+  }));
+
+  exportToExcel(formattedData, filename, 'Katalog Buku');
+}
+
+/**
+ * Export Transaksi Peminjaman Perpustakaan to Excel
+ */
+export function exportTransaksiPerpusToExcel(transaksiList: TransaksiPerpus[], siswaList: Siswa[], filename: string = 'Laporan_Sirkulasi_Perpustakaan.xlsx') {
+  const formattedData = transaksiList.map((t, idx) => {
+    const student = siswaList.find(s => s.id === t.siswaId);
+    return {
+      'No': idx + 1,
+      'Kode Transaksi': t.id,
+      'Nama Peminjam': t.namaSiswa || student?.nama || '-',
+      'NISN': student?.nisn || '-',
+      'Judul Buku': t.judulBuku || '-',
+      'Tanggal Pinjam': t.tanggalPinjam,
+      'Batas Jatuh Tempo': t.tanggalJatuhTempo,
+      'Tanggal Kembali': t.tanggalKembali || '-',
+      'Status Trx': t.status,
+      'Denda Terakumulasi (Rp)': t.denda || 0
+    };
+  });
+
+  exportToExcel(formattedData, filename, 'Sirkulasi Perpustakaan');
+}
+
+/**
+ * Export Skrining Kesehatan UKS to Excel
+ */
+export function exportUKSHealthToExcel(uksList: UKSScreening[], siswaList: Siswa[], filename: string = 'Laporan_Pemeriksaan_UKS.xlsx') {
+  const formattedData = uksList.map((u, idx) => {
+    const student = siswaList.find(s => s.id === u.siswaId);
+    return {
+      'No': idx + 1,
+      'Tanggal Periksa': u.tanggal,
+      'Nama Siswa': u.namaSiswa || student?.nama || '-',
+      'Rombel': student?.rombelNama || u.rombelId || '-',
+      'Tinggi Badan (cm)': u.tinggiBadan || '-',
+      'Berat Badan (kg)': u.beratBadan || '-',
+      'Kategori IMT': u.imtKategori || '-',
+      'Kondisi Mata': u.kondisiMata || 'Normal',
+      'Kondisi Pendengaran': u.kondisiPendengaran || 'Baik',
+      'Kondisi Gigi': u.kondisiGigi || 'Baik',
+      'Catatan Petugas': u.catatanPetugas || '-'
+    };
+  });
+
+  exportToExcel(formattedData, filename, 'Laporan UKS');
+}
+
+/**
+ * Export Jurnal KBM to Excel
+ */
+export function exportJurnalToExcel(jurnalList: JurnalKBM[], filename: string = 'Laporan_Jurnal_KBM.xlsx') {
+  const formattedData = jurnalList.map((j, idx) => ({
+    'No': idx + 1,
+    'Tanggal': j.tanggal,
+    'Guru Pengampu': j.guruNama,
+    'Rombel / Kelas': j.rombelId,
+    'Mata Pelajaran': j.mapel,
+    'Materi Pembelajaran / CP': j.materi,
+    'Jam Ke': j.jamKe,
+    'Catatan BKB / Behavior': j.catatanBKB || '-'
+  }));
+
+  exportToExcel(formattedData, filename, 'Jurnal KBM');
+}
+
+/**
+ * Export Catatan Poin Pelanggaran / Prestasi to Excel
+ */
+export function exportPelanggaranToExcel(poinList: PoinPelanggaran[], siswaList: Siswa[], filename: string = 'Laporan_Poin_Kedisiplinan.xlsx') {
+  const formattedData = poinList.map((p, idx) => {
+    const student = siswaList.find(s => s.id === p.siswaId);
+    return {
+      'No': idx + 1,
+      'Tanggal Kejadian': p.tanggal,
+      'Nama Siswa': p.namaSiswa || student?.nama || '-',
+      'Rombel': p.rombelNama || student?.rombelNama || '-',
+      'Kategori': p.jenis,
+      'Keterangan / Deskripsi': p.keterangan || '-',
+      'Bobot Poin': p.poin || 0
+    };
+  });
+
+  exportToExcel(formattedData, filename, 'Pelanggaran & Prestasi');
 }
 
 /**
@@ -177,3 +282,4 @@ export function exportComprehensiveSchoolExcel(
 
   XLSX.writeFile(workbook, filename);
 }
+

@@ -29,6 +29,7 @@ import {
   Printer,
   AlertCircle,
   CheckCircle2,
+  Shield,
   ShieldCheck,
   PhoneCall,
   Sparkles,
@@ -46,13 +47,18 @@ import {
   Search,
   Key,
   Mail,
-  Lock
+  Lock,
+  Filter,
+  Eye,
+  SlidersHorizontal
 } from 'lucide-react';
 
 interface AdminViewsProps {
   activeTab: string;
   settings: AppSettings;
   onUpdateSettings: (newSettings: AppSettings) => void;
+  onOpenStudentCardModal?: (siswaId?: string) => void;
+  onOpenKalenderModal?: () => void;
 }
 
 const ALL_ROLES: { id: Role; label: string }[] = [
@@ -64,7 +70,13 @@ const ALL_ROLES: { id: Role; label: string }[] = [
   { id: 'UKS', label: 'Petugas UKS' },
 ];
 
-export const AdminViews: React.FC<AdminViewsProps> = ({ activeTab, settings, onUpdateSettings }) => {
+export const AdminViews: React.FC<AdminViewsProps> = ({
+  activeTab,
+  settings,
+  onUpdateSettings,
+  onOpenStudentCardModal,
+  onOpenKalenderModal
+}) => {
   // Collections state
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [siswaList, setSiswaList] = useState<Siswa[]>([]);
@@ -139,6 +151,13 @@ export const AdminViews: React.FC<AdminViewsProps> = ({ activeTab, settings, onU
   const [sekolahTujuan, setSekolahTujuan] = useState('');
   const [mutasiError, setMutasiError] = useState('');
   const [selectedMutasiForPdf, setSelectedMutasiForPdf] = useState<MutasiSiswa | null>(null);
+
+  // Audit Log State & Filters
+  const [auditSearchQuery, setAuditSearchQuery] = useState('');
+  const [auditCategoryFilter, setAuditCategoryFilter] = useState<'ALL' | 'ROLE_CHANGE' | 'CONFIG_UPDATE' | 'SYSTEM' | 'MUTASI' | 'PERPUS' | 'UKS' | 'ABSENSI'>('ALL');
+  const [auditRoleFilter, setAuditRoleFilter] = useState<'ALL' | Role>('ALL');
+  const [auditTimeFilter, setAuditTimeFilter] = useState<'ALL' | 'TODAY' | 'WEEK' | 'MONTH'>('ALL');
+  const [selectedAuditMetadata, setSelectedAuditMetadata] = useState<AuditLog | null>(null);
 
   // Kalender Akademik Form
   const [showAddKalenderModal, setShowAddKalenderModal] = useState(false);
@@ -534,8 +553,20 @@ Kepala Sekolah: ${settings.kepsekNama} (NIP. ${settings.kepsekNip})
     if (!editUserModal) return;
     try {
       await setDoc(doc(db, 'users', editUserModal.uid), editUserModal, { merge: true });
+      await logAuditEvent(
+        'Administrator / Operator TU',
+        'ADMIN',
+        'ROLE_CHANGE',
+        `Memperbarui hak akses & multi-role staf: ${editUserModal.displayName} (${editUserModal.email}) -> Role: [${editUserModal.roles?.join(', ')}]${editUserModal.rombelBinaan ? `, Wali: ${editUserModal.rombelBinaan}` : ''}`,
+        {
+          targetUid: editUserModal.uid,
+          targetEmail: editUserModal.email,
+          newRoles: editUserModal.roles,
+          rombelBinaan: editUserModal.rombelBinaan || null
+        }
+      );
       setEditUserModal(null);
-      alert("Multi-Role pengguna berhasil disimpan!");
+      alert("✅ Multi-Role pengguna berhasil disimpan & dicatat dalam Log Audit Sistem!");
     } catch (err: any) {
       alert("Gagal menyimpan role: " + err.message);
     }
@@ -647,6 +678,141 @@ Kepala Sekolah: ${settings.kepsekNama} (NIP. ${settings.kepsekNip})
   const totalStokBuku = bukuList.reduce((acc, b) => acc + (Number(b.stok) || 0), 0);
   const totalBukuDipinjam = bukuList.reduce((acc, b) => acc + (Number(b.dipinjam) || 0), 0);
   const totalEksemplarBuku = totalStokBuku + totalBukuDipinjam;
+
+  // Filtered Audit Logs Logic
+  const filteredAuditLogs = auditLogs.filter((log) => {
+    const actor = log.actorName || log.userName || 'Sistem';
+    const role = log.actorRole || log.role || 'ADMIN';
+    const action = log.actionType || log.action || 'SYSTEM';
+    const desc = log.description || log.details || '';
+    const time = log.timestamp ? new Date(log.timestamp).getTime() : 0;
+
+    // Search query
+    if (auditSearchQuery.trim()) {
+      const q = auditSearchQuery.toLowerCase().trim();
+      const metaStr = log.metadata ? JSON.stringify(log.metadata).toLowerCase() : '';
+      const matches =
+        actor.toLowerCase().includes(q) ||
+        role.toLowerCase().includes(q) ||
+        action.toLowerCase().includes(q) ||
+        desc.toLowerCase().includes(q) ||
+        metaStr.includes(q);
+      if (!matches) return false;
+    }
+
+    // Category Filter
+    if (auditCategoryFilter !== 'ALL') {
+      if (auditCategoryFilter === 'ROLE_CHANGE' && action !== 'ROLE_CHANGE') return false;
+      if (auditCategoryFilter === 'CONFIG_UPDATE' && action !== 'CONFIG_UPDATE') return false;
+      if (auditCategoryFilter === 'SYSTEM' && action !== 'SYSTEM') return false;
+      if (auditCategoryFilter === 'MUTASI' && action !== 'MUTASI') return false;
+      if (auditCategoryFilter === 'PERPUS' && !action.startsWith('PERPUS')) return false;
+      if (auditCategoryFilter === 'UKS' && !action.startsWith('UKS')) return false;
+      if (auditCategoryFilter === 'ABSENSI' && !action.startsWith('ABSENSI')) return false;
+    }
+
+    // Role Filter
+    if (auditRoleFilter !== 'ALL') {
+      if (role !== auditRoleFilter) return false;
+    }
+
+    // Time Filter
+    if (auditTimeFilter !== 'ALL' && time > 0) {
+      const now = new Date().getTime();
+      const diffHours = (now - time) / (1000 * 60 * 60);
+      if (auditTimeFilter === 'TODAY' && diffHours > 24) return false;
+      if (auditTimeFilter === 'WEEK' && diffHours > 24 * 7) return false;
+      if (auditTimeFilter === 'MONTH' && diffHours > 24 * 30) return false;
+    }
+
+    return true;
+  });
+
+  // Export Audit CSV
+  const handleExportAuditCSV = () => {
+    if (filteredAuditLogs.length === 0) {
+      alert("Tidak ada data audit log yang sesuai filter untuk diekspor.");
+      return;
+    }
+    const exportData = filteredAuditLogs.map((l) => ({
+      Waktu: l.timestamp ? new Date(l.timestamp).toLocaleString('id-ID') : '-',
+      Aktor_Nama: l.actorName || l.userName || 'Sistem',
+      Aktor_Role: l.actorRole || l.role || 'ADMIN',
+      Kategori_Aksi: l.actionType || l.action || 'SYSTEM',
+      Deskripsi_Log: l.description || l.details || '',
+      Metadata_JSON: l.metadata ? JSON.stringify(l.metadata) : ''
+    }));
+
+    const filename = `Audit_Log_Keamanan_${new Date().toISOString().split('T')[0]}.csv`;
+    downloadCSV(exportData, filename);
+  };
+
+  // Render Audit Action Badge Helper
+  const renderAuditBadge = (actionType?: string) => {
+    const act = actionType || 'SYSTEM';
+    if (act === 'ROLE_CHANGE') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 font-extrabold text-[10px] rounded-lg border border-purple-200 dark:border-purple-800 uppercase tracking-wider">
+          <Shield className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+          Hak Akses / Role
+        </span>
+      );
+    }
+    if (act === 'CONFIG_UPDATE') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-300 font-extrabold text-[10px] rounded-lg border border-amber-200 dark:border-amber-800 uppercase tracking-wider">
+          <SettingsIcon className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+          Konfigurasi Sekolah
+        </span>
+      );
+    }
+    if (act === 'SYSTEM') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-700 dark:text-indigo-300 font-extrabold text-[10px] rounded-lg border border-indigo-200 dark:border-indigo-800 uppercase tracking-wider">
+          <Lock className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+          Sistem & Keamanan
+        </span>
+      );
+    }
+    if (act === 'MUTASI') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 font-extrabold text-[10px] rounded-lg border border-rose-200 dark:border-rose-800 uppercase tracking-wider">
+          <FileText className="w-3 h-3 text-rose-600 dark:text-rose-400" />
+          Mutasi Siswa
+        </span>
+      );
+    }
+    if (act.startsWith('PERPUS')) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 font-extrabold text-[10px] rounded-lg border border-blue-200 dark:border-blue-800 uppercase tracking-wider">
+          <BookOpen className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+          Perpustakaan
+        </span>
+      );
+    }
+    if (act.startsWith('UKS')) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 font-extrabold text-[10px] rounded-lg border border-emerald-200 dark:border-emerald-800 uppercase tracking-wider">
+          <Activity className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+          Layanan UKS
+        </span>
+      );
+    }
+    if (act.startsWith('ABSENSI')) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-orange-50 dark:bg-orange-950/50 text-orange-700 dark:text-orange-300 font-extrabold text-[10px] rounded-lg border border-orange-200 dark:border-orange-800 uppercase tracking-wider">
+          <PhoneCall className="w-3 h-3 text-orange-600 dark:text-orange-400" />
+          Peringatan WA
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-[10px] rounded-lg border border-slate-200 dark:border-slate-700 uppercase tracking-wider">
+        <Tag className="w-3 h-3 text-slate-500" />
+        {act}
+      </span>
+    );
+  };
 
   return (
     <div className="space-y-6">
@@ -1075,6 +1241,16 @@ Kepala Sekolah: ${settings.kepsekNama} (NIP. ${settings.kepsekNip})
                 <Download className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                 Ekspor CSV ({filteredSiswa.length})
               </button>
+
+              {onOpenStudentCardModal && (
+                <button
+                  onClick={() => onOpenStudentCardModal()}
+                  className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-xs transition-colors whitespace-nowrap"
+                >
+                  <Printer className="w-4 h-4 text-amber-300" />
+                  Cetak Batch ID Card Barcode
+                </button>
+              )}
 
               <button
                 onClick={() => setShowAddSiswaModal(true)}
@@ -1777,9 +1953,230 @@ Kepala Sekolah: ${settings.kepsekNama} (NIP. ${settings.kepsekNip})
         </div>
       )}
 
-      {/* TAB 5: RIWAYAT AUDIT LOG & PEMANTAUAN KETIDAKHADIRAN OTOMATIS */}
+      {/* TAB 5: RIWAYAT LOG AUDIT KEAMANAN & AKUNTABILITAS SISTEM */}
       {activeTab === 'admin-audit' && (
         <div className="space-y-6">
+          {/* STATS OVERVIEW CARDS */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="p-4 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs transition-colors">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Total Audit Log</p>
+                <div className="p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-300">
+                  <FileText className="w-4 h-4" />
+                </div>
+              </div>
+              <p className="text-2xl font-black text-slate-800 dark:text-slate-100 mt-1">{auditLogs.length}</p>
+              <p className="text-[10px] text-slate-400 mt-0.5">Aktivitas Recorded</p>
+            </div>
+
+            <div className="p-4 bg-purple-50/60 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800/60 rounded-2xl shadow-xs">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-purple-700 dark:text-purple-300 font-semibold">Mutasi Role & Akses</p>
+                <div className="p-1.5 bg-purple-600 text-white rounded-lg">
+                  <Shield className="w-4 h-4" />
+                </div>
+              </div>
+              <p className="text-2xl font-black text-purple-900 dark:text-purple-200 mt-1">
+                {auditLogs.filter(l => (l.actionType || l.action) === 'ROLE_CHANGE').length}
+              </p>
+              <p className="text-[10px] text-purple-600/80 dark:text-purple-400 mt-0.5">Update Hak Akses User</p>
+            </div>
+
+            <div className="p-4 bg-amber-50/60 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-2xl shadow-xs">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-amber-700 dark:text-amber-300 font-semibold">Update Konfigurasi</p>
+                <div className="p-1.5 bg-amber-600 text-white rounded-lg">
+                  <SettingsIcon className="w-4 h-4" />
+                </div>
+              </div>
+              <p className="text-2xl font-black text-amber-900 dark:text-amber-200 mt-1">
+                {auditLogs.filter(l => (l.actionType || l.action) === 'CONFIG_UPDATE').length}
+              </p>
+              <p className="text-[10px] text-amber-600/80 dark:text-amber-400 mt-0.5">Pengaturan Sistem</p>
+            </div>
+
+            <div className="p-4 bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800/60 rounded-2xl shadow-xs">
+              <div className="flex items-center justify-between">
+                <p className="text-xs text-indigo-700 dark:text-indigo-300 font-semibold">Keamanan & Event</p>
+                <div className="p-1.5 bg-indigo-600 text-white rounded-lg">
+                  <Lock className="w-4 h-4" />
+                </div>
+              </div>
+              <p className="text-2xl font-black text-indigo-900 dark:text-indigo-200 mt-1">
+                {auditLogs.filter(l => (l.actionType || l.action) === 'SYSTEM').length}
+              </p>
+              <p className="text-[10px] text-indigo-600/80 dark:text-indigo-400 mt-0.5">Reset Pass, Backup & Export</p>
+            </div>
+          </div>
+
+          {/* AUDIT LOG TABLE & FILTERS PANEL */}
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-xs border border-slate-200 dark:border-slate-800 space-y-5 transition-colors">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 dark:border-slate-800 pb-4">
+              <div>
+                <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                  Pusat Log Audit Keamanan Akses & Governance System
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  Seluruh perubahan hak akses role, pembaruan konfigurasi sekolah, reset password, export data, dan transaksi dicatat secara permanen di Firestore untuk transparansi & akuntabilitas.
+                </p>
+              </div>
+
+              <button
+                onClick={handleExportAuditCSV}
+                className="px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-xs transition-all whitespace-nowrap self-start md:self-auto"
+              >
+                <Download className="w-4 h-4 text-amber-300" />
+                Ekspor Audit Log CSV ({filteredAuditLogs.length})
+              </button>
+            </div>
+
+            {/* FILTERS TOOLBAR */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 bg-slate-50 dark:bg-slate-800/60 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs">
+              {/* Search input */}
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  value={auditSearchQuery}
+                  onChange={(e) => setAuditSearchQuery(e.target.value)}
+                  placeholder="Cari aktor, deskripsi, role, keyword..."
+                  className="w-full pl-9 pr-8 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500/30 font-medium"
+                />
+                {auditSearchQuery && (
+                  <button
+                    onClick={() => setAuditSearchQuery('')}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 font-bold"
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+
+              {/* Category Filter */}
+              <div>
+                <select
+                  value={auditCategoryFilter}
+                  onChange={(e) => setAuditCategoryFilter(e.target.value as any)}
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500/30 font-medium"
+                >
+                  <option value="ALL">🔍 Semua Kategori Akses</option>
+                  <option value="ROLE_CHANGE">🛡️ Hak Akses / Multi-Role</option>
+                  <option value="CONFIG_UPDATE">⚙️ Konfigurasi Sekolah</option>
+                  <option value="SYSTEM">🔒 Keamanan & Reset Pass</option>
+                  <option value="MUTASI">📄 Mutasi Siswa</option>
+                  <option value="PERPUS">📚 Transaksi Perpustakaan</option>
+                  <option value="UKS">🩺 Layanan UKS</option>
+                  <option value="ABSENSI">📱 Peringatan WA Absensi</option>
+                </select>
+              </div>
+
+              {/* Role Filter */}
+              <div>
+                <select
+                  value={auditRoleFilter}
+                  onChange={(e) => setAuditRoleFilter(e.target.value as any)}
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500/30 font-medium"
+                >
+                  <option value="ALL">👤 Semua Role Aktor</option>
+                  <option value="ADMIN">ADMIN (Administrator / TU)</option>
+                  <option value="KEPSEK">KEPSEK (Kepala Sekolah)</option>
+                  <option value="GURU_KELAS">GURU_KELAS (Wali Kelas)</option>
+                  <option value="GURU_MAPEL">GURU_MAPEL (Pengajar Mapel)</option>
+                  <option value="PUSTAKAWAN">PUSTAKAWAN (Pengelola Perpus)</option>
+                  <option value="UKS">UKS (Petugas Kesehatan)</option>
+                </select>
+              </div>
+
+              {/* Time Filter */}
+              <div>
+                <select
+                  value={auditTimeFilter}
+                  onChange={(e) => setAuditTimeFilter(e.target.value as any)}
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-purple-500/30 font-medium"
+                >
+                  <option value="ALL">🕒 Semua Waktu Record</option>
+                  <option value="TODAY">Hari Ini (24 Jam Terakhir)</option>
+                  <option value="WEEK">7 Hari Terakhir</option>
+                  <option value="MONTH">30 Hari Terakhir</option>
+                </select>
+              </div>
+            </div>
+
+            {/* AUDIT LOG TABLE */}
+            <div className="overflow-x-auto border border-slate-200 dark:border-slate-800 rounded-2xl">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-50 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 font-semibold border-b border-slate-200 dark:border-slate-700">
+                    <th className="p-3">Waktu & Tanggal</th>
+                    <th className="p-3">Aktor / Pengguna</th>
+                    <th className="p-3">Role Peran</th>
+                    <th className="p-3">Kategori Aksi</th>
+                    <th className="p-3">Detail Deskripsi Aktivitas Audit Log</th>
+                    <th className="p-3 text-center">Metadata</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {filteredAuditLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-slate-400 dark:text-slate-500">
+                        Tidak ditemukan log audit yang sesuai dengan kriteria pencarian & filter.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredAuditLogs.map((log) => {
+                      const actorName = log.actorName || log.userName || 'Sistem Otomatis';
+                      const actorRole = log.actorRole || log.role || 'ADMIN';
+                      const actionType = log.actionType || log.action || 'SYSTEM';
+                      const description = log.description || log.details || '-';
+                      const formattedTime = log.timestamp ? new Date(log.timestamp).toLocaleString('id-ID') : '-';
+                      const hasMetadata = log.metadata && Object.keys(log.metadata).length > 0;
+
+                      return (
+                        <tr key={log.id || Math.random()} className="hover:bg-slate-50/80 dark:hover:bg-slate-800/50 transition-colors">
+                          <td className="p-3 font-mono text-slate-500 dark:text-slate-400 whitespace-nowrap">
+                            <div className="flex items-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5 text-slate-400" />
+                              {formattedTime}
+                            </div>
+                          </td>
+                          <td className="p-3 font-bold text-slate-800 dark:text-slate-100">
+                            {actorName}
+                          </td>
+                          <td className="p-3">
+                            <span className="px-2 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-extrabold text-[10px] rounded-md border border-slate-200 dark:border-slate-700 uppercase">
+                              {actorRole}
+                            </span>
+                          </td>
+                          <td className="p-3 whitespace-nowrap">
+                            {renderAuditBadge(actionType)}
+                          </td>
+                          <td className="p-3 text-slate-700 dark:text-slate-200 leading-relaxed font-medium">
+                            {description}
+                          </td>
+                          <td className="p-3 text-center">
+                            {hasMetadata ? (
+                              <button
+                                onClick={() => setSelectedAuditMetadata(log)}
+                                className="px-2.5 py-1 bg-purple-50 hover:bg-purple-100 dark:bg-purple-950/40 dark:hover:bg-purple-900/50 text-purple-700 dark:text-purple-300 font-bold rounded-lg text-[10px] border border-purple-200 dark:border-purple-800 flex items-center gap-1 mx-auto transition-all"
+                                title="Lihat parameter detail metadata JSON"
+                              >
+                                <Eye className="w-3 h-3 text-purple-600 dark:text-purple-400" />
+                                Metadata
+                              </button>
+                            ) : (
+                              <span className="text-slate-300 dark:text-slate-700 text-[10px]">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           {/* Absence Monitoring Trigger Box */}
           <div className="bg-slate-900 text-white rounded-2xl p-6 shadow-xl space-y-4 border border-slate-800">
             <div className="flex items-center justify-between">
@@ -1788,7 +2185,7 @@ Kepala Sekolah: ${settings.kepsekNama} (NIP. ${settings.kepsekNip})
                   <ShieldCheck className="w-5 h-5" /> Pemantauan Otomatis Siswa Alpha / Sakit ≥ 3 Hari
                 </h3>
                 <p className="text-xs text-slate-400 mt-1">
-                  Aturan: Memindai seluruh absensi siswa. Siswa yang tidak hadir 3 hari berturut-turut otomatis memicu peringatan WA via Fonnte ke Orang Tua.
+                  Aturan: Memindai seluruh absensi siswa. Siswa yang tidak hadir 3 hari berturut-turut otomatis memicu peringatan WA via Fonnte ke Orang Tua & mencatatnya di Log Audit.
                 </p>
               </div>
               <button
@@ -1808,55 +2205,54 @@ Kepala Sekolah: ${settings.kepsekNama} (NIP. ${settings.kepsekNip})
             )}
           </div>
 
-          {/* Firestore Audit Trail Table */}
-          <div className="bg-white rounded-2xl p-6 shadow-xs border border-slate-200 space-y-4">
-            <div className="border-b pb-4">
-              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <FileText className="w-5 h-5 text-purple-600" />
-                Sistem Log Audit Transaksi Perpustakaan & UKS
-              </h2>
-              <p className="text-xs text-slate-500 mt-1">
-                Seluruh aktivitas peminjaman buku, bebas pustaka, dan penanganan pasien UKS tercatat secara permanen di Firestore untuk akuntabilitas.
-              </p>
-            </div>
+          {/* MODAL METADATA DETAIL VIEWER */}
+          {selectedAuditMetadata && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+              <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 max-w-lg w-full shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                    <div>
+                      <h3 className="font-bold text-sm text-slate-800 dark:text-slate-100">Detail Parameter Metadata Audit Log</h3>
+                      <p className="text-[10px] text-slate-400">{selectedAuditMetadata.actorName || selectedAuditMetadata.userName} • {selectedAuditMetadata.timestamp ? new Date(selectedAuditMetadata.timestamp).toLocaleString('id-ID') : ''}</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setSelectedAuditMetadata(null)}
+                    className="text-slate-400 hover:text-slate-600 font-bold text-sm"
+                  >
+                    ✕
+                  </button>
+                </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs">
-                <thead>
-                  <tr className="bg-slate-50 text-slate-600 font-semibold border-b">
-                    <th className="p-3">Waktu</th>
-                    <th className="p-3">Pengguna</th>
-                    <th className="p-3">Role</th>
-                    <th className="p-3">Aksi</th>
-                    <th className="p-3">Detail Deskripsi Log</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {auditLogs.length === 0 ? (
-                    <tr>
-                      <td colSpan={5} className="p-6 text-center text-slate-400">
-                        Belum ada riwayat audit log. Lakukan transaksi perpustakaan atau penanganan UKS untuk menghasilkan log.
-                      </td>
-                    </tr>
-                  ) : (
-                    auditLogs.map((log) => (
-                      <tr key={log.id} className="hover:bg-slate-50">
-                        <td className="p-3 font-mono text-slate-500">{new Date(log.timestamp).toLocaleString('id-ID')}</td>
-                        <td className="p-3 font-bold text-slate-800">{log.userName}</td>
-                        <td className="p-3">
-                          <span className="px-2 py-0.5 bg-purple-50 text-purple-700 font-bold rounded-md border border-purple-200">
-                            {log.role}
-                          </span>
-                        </td>
-                        <td className="p-3 font-semibold text-slate-700 font-mono">{log.action}</td>
-                        <td className="p-3 text-slate-600">{log.details}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
+                <div className="space-y-3 text-xs">
+                  <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                    <p className="font-bold text-slate-700 dark:text-slate-300 mb-1">Aktivitas Log:</p>
+                    <p className="text-slate-600 dark:text-slate-200 font-medium">{selectedAuditMetadata.description || selectedAuditMetadata.details}</p>
+                  </div>
+
+                  <div>
+                    <p className="font-bold text-slate-700 dark:text-slate-300 mb-1 flex items-center justify-between">
+                      <span>Payload Metadata JSON:</span>
+                      <span className="text-[10px] text-purple-600 dark:text-purple-400 font-mono">Firestore Record</span>
+                    </p>
+                    <pre className="p-3 bg-slate-950 text-emerald-400 font-mono text-[11px] rounded-xl overflow-x-auto border border-slate-800 max-h-60">
+                      {JSON.stringify(selectedAuditMetadata.metadata || {}, null, 2)}
+                    </pre>
+                  </div>
+                </div>
+
+                <div className="flex justify-end pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    onClick={() => setSelectedAuditMetadata(null)}
+                    className="px-5 py-2 bg-purple-600 text-white font-bold rounded-xl text-xs shadow-xs hover:bg-purple-700"
+                  >
+                    Tutup
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
 

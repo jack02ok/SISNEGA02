@@ -3,6 +3,7 @@ import { db } from '../../lib/firebase';
 import { collection, onSnapshot, doc, setDoc, addDoc, getDocs } from 'firebase/firestore';
 import { Absensi, JurnalKBM, Surat, Buku, TransaksiPerpus, UKSScreening, KPIPegawai, SupervisiAkademik, UserProfile, AppSettings, Siswa, Penilaian, InventarisRombel } from '../../types';
 import { exportComprehensiveSchoolExcel, exportAbsensiToExcel, exportToExcel } from '../../services/excelExportService';
+import { downloadElementAsPDF, printElement } from '../../services/pdfService';
 import { DashboardSkeleton, TableSkeleton } from '../SkeletonLoader';
 import {
   ResponsiveContainer,
@@ -36,7 +37,8 @@ import {
   Activity,
   Sparkles,
   FileSpreadsheet,
-  Download
+  Download,
+  Printer
 } from 'lucide-react';
 
 interface KepsekViewsProps {
@@ -281,12 +283,20 @@ export const KepsekViews: React.FC<KepsekViewsProps> = ({ activeTab, settings })
               </p>
             </div>
 
-            <button
-              onClick={handleExportKepsekExcel}
-              className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs flex items-center gap-2 shadow-lg transition-all"
-            >
-              <FileSpreadsheet className="w-4 h-4" /> Ekspor Rekap Excel (SheetJS)
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={handleExportKepsekExcel}
+                className="px-4 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-xl text-xs flex items-center gap-2 shadow-lg transition-all"
+              >
+                <FileSpreadsheet className="w-4 h-4" /> Ekspor Rekap Excel (SheetJS)
+              </button>
+              <button
+                onClick={() => downloadElementAsPDF('report-kepsek-pdf', `Laporan_Eksekutif_Kepala_Sekolah_${new Date().toISOString().split('T')[0]}.pdf`)}
+                className="px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-amber-300 font-bold rounded-xl text-xs flex items-center gap-2 shadow-lg transition-all"
+              >
+                <Printer className="w-4 h-4" /> Cetak PDF Eksekutif
+              </button>
+            </div>
           </div>
 
           {/* Stats Grid */}
@@ -739,6 +749,83 @@ export const KepsekViews: React.FC<KepsekViewsProps> = ({ activeTab, settings })
           </div>
         </div>
       )}
+
+      {/* HIDDEN PRINT CONTAINER FOR EXECUTIVE DASHBOARD PDF */}
+      <div className="hidden">
+        <div id="report-kepsek-pdf" className="p-8 bg-white text-slate-900 font-serif text-xs leading-relaxed space-y-4">
+          <div className="flex items-center justify-between border-b-4 border-double border-slate-900 pb-3">
+            {settings.schoolLogoUrl && (
+              <img src={settings.schoolLogoUrl} alt={settings.schoolName} className="w-16 h-16 object-contain" referrerPolicy="no-referrer" />
+            )}
+            <div className="text-center flex-1 px-4 space-y-1">
+              <h1 className="text-base font-bold uppercase tracking-wider">Pemerintah Kota / Kabupaten Dinas Pendidikan</h1>
+              <h2 className="text-lg font-black uppercase text-amber-900">{settings.schoolName}</h2>
+              <p className="text-[11px] font-sans text-slate-600">{settings.schoolAddress} • NPSN: {settings.schoolNPSN}</p>
+            </div>
+            {settings.schoolLogoUrl && (
+              <img src={settings.schoolLogoUrl} alt={settings.schoolName} className="w-16 h-16 object-contain opacity-0" />
+            )}
+          </div>
+
+          <div className="text-center pt-2 pb-1 space-y-0.5">
+            <h3 className="text-sm font-bold underline uppercase">LAPORAN REKAPITULASI EKSEKUTIF MANAJEMEN SEKOLAH</h3>
+            <p className="text-[11px] font-sans font-bold">Laporan Monitoring Manajerial Kepala Sekolah</p>
+            <p className="text-[10px] font-sans text-slate-500">Tanggal Cetak: {new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 font-sans text-[11px]">
+            <div className="p-3 border rounded-xl bg-slate-50 space-y-1">
+              <p className="font-bold text-slate-700">RINGKASAN PRESENSI HARI INI</p>
+              <p>Total Hadir: <span className="font-bold text-emerald-700">{totalHadir} Siswa</span></p>
+              <p>Total Sakit/Izin: <span className="font-bold text-amber-700">{totalSakit + totalIzin} Siswa</span></p>
+            </div>
+            <div className="p-3 border rounded-xl bg-slate-50 space-y-1">
+              <p className="font-bold text-slate-700">LOGISTIK & KEUANGAN</p>
+              <p>Jurnal KBM Terisi: <span className="font-bold text-blue-700">{jurnal.length} Entry</span></p>
+              <p>Katalog Koleksi Buku: <span className="font-bold text-purple-700">{buku.length} Judul</span></p>
+            </div>
+          </div>
+
+          <div className="pt-6 font-sans">
+            <h4 className="font-bold text-[11px] uppercase border-b pb-1 mb-2">Peringkat KPI Kinerja Tenaga Pendidik</h4>
+            <table className="w-full text-left text-[10px] border border-slate-300 border-collapse">
+              <thead>
+                <tr className="bg-slate-100 border-b border-slate-300 font-bold">
+                  <th className="p-1.5 border-r w-8 text-center">No</th>
+                  <th className="p-1.5 border-r">Nama Guru / Pegawai</th>
+                  <th className="p-1.5 border-r w-24">NIP</th>
+                  <th className="p-1.5 border-r w-20 text-center">Jurnal KBM</th>
+                  <th className="p-1.5 border-r w-20 text-center">Skor KPI</th>
+                  <th className="p-1.5 text-center">Predikat Kinerja</th>
+                </tr>
+              </thead>
+              <tbody>
+                {teachers.map((t, idx) => {
+                  const kpi = calculateKPIForTeacher(t);
+                  return (
+                    <tr key={t.uid || idx} className="border-b border-slate-200">
+                      <td className="p-1.5 border-r text-center">{idx + 1}</td>
+                      <td className="p-1.5 border-r font-semibold">{t.displayName}</td>
+                      <td className="p-1.5 border-r font-mono">{kpi.nip}</td>
+                      <td className="p-1.5 border-r text-center">{kpi.totalJurnal}</td>
+                      <td className="p-1.5 border-r text-center font-bold text-emerald-800">{kpi.skorKPI}</td>
+                      <td className="p-1.5 text-center font-bold text-emerald-700">{kpi.predikat}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="pt-8 text-right text-[11px] font-sans">
+            <p>Jakarta, {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+            <p className="font-bold">Kepala Sekolah {settings.schoolName}</p>
+            <div className="h-16"></div>
+            <p className="font-bold underline">{settings.kepsekNama}</p>
+            <p className="text-[10px] text-slate-500">NIP. {settings.kepsekNip}</p>
+          </div>
+        </div>
+      </div>
 
     </div>
   );

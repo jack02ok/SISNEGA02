@@ -4,6 +4,7 @@ import { collection, query, where, getDocs, addDoc, doc, setDoc } from 'firebase
 import { BarcodeScannerModal } from './BarcodeScannerModal';
 import { Siswa, Buku, Role } from '../types';
 import { logAuditEvent } from '../services/auditService';
+import { sendFonnteWA } from '../services/fonnteService';
 import { QrCode, CheckCircle2, User, BookOpen, Clock, AlertCircle, X, Sparkles } from 'lucide-react';
 
 interface FloatingScanFABProps {
@@ -69,29 +70,41 @@ export const FloatingScanFAB: React.FC<FloatingScanFABProps> = ({ activeRole, ac
     setIsProcessing(true);
     try {
       const today = new Date().toISOString().split('T')[0];
+      const timeStr = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
       const s = scannedData.siswa;
-      const absId = `${s.id}_${today}`;
+      const absId = `ABS-${s.id}-${today}`;
 
       await setDoc(doc(db, 'absensi', absId), {
+        id: absId,
         siswaId: s.id,
         nisn: s.nisn,
-        nama: s.nama,
+        namaSiswa: s.nama,
         rombelId: s.rombelId,
-        rombelNama: s.rombelNama,
+        rombelNama: s.rombelNama || 'Kelas',
         tanggal: today,
+        waktuMasuk: timeStr,
         status,
-        waktuScan: new Date().toLocaleTimeString('id-ID'),
-        waNotified: false
+        waNotified: true
       });
+
+      // Trigger 'Siswa Tiba' WA Notification via Fonnte API
+      if (s.noWaOrtu) {
+        const statusLabel = status === 'HADIR' ? 'TIBA di Sekolah' : `Absensi: ${status}`;
+        const waMsg = `Yth. Bapak/Ibu ${s.namaOrtu || 'Orang Tua'},\n\nPemberitahuan Absensi Sekolah:\nAnanda *${s.nama}* (${s.rombelNama || 'Kelas'}) telah *${statusLabel}* pada jam *${timeStr}* WIB.\n\nTerima kasih.`;
+        await sendFonnteWA({
+          target: s.noWaOrtu,
+          message: waMsg
+        });
+      }
 
       await logAuditEvent(
         actorName || 'Petugas Scan',
         activeRole,
         'SYSTEM',
-        `Presensi Cepat FAB (${status}): ${s.nama} (${s.rombelNama})`
+        `Presensi Cepat FAB Barcode (${status}): ${s.nama} (${s.rombelNama})`
       );
 
-      setQuickMessage(`✅ Presensi [${status}] berhasil dicatat untuk ${s.nama}!`);
+      setQuickMessage(`✅ Presensi [${status}] berhasil dicatat & WA Otomatis terkirim untuk ${s.nama}!`);
       setTimeout(() => {
         setScannedData(null);
         setQuickMessage(null);

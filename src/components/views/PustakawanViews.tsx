@@ -171,25 +171,45 @@ export const PustakawanViews: React.FC<PustakawanViewsProps> = ({ activeTab, set
     const fine = calculateFineForTransaction(trx);
     const todayStr = new Date().toISOString().split('T')[0];
 
-    const updatedTrx: Partial<TransaksiPerpus> = {
+    const updatedTrxRecord: TransaksiPerpus = {
+      ...trx,
       status: 'DIKEMBALIKAN',
       tanggalKembali: todayStr,
       denda: fine
     };
 
-    const res = await saveOrQueueRecord('transaksiPerpus', 'UPDATE', updatedTrx, trx.id);
+    const res = await saveOrQueueRecord('transaksiPerpus', 'UPDATE', {
+      status: 'DIKEMBALIKAN',
+      tanggalKembali: todayStr,
+      denda: fine
+    }, trx.id);
 
-    // Find book and update stock
+    // Find book and update inventory/stock
     const book = bukuList.find(b => b.id === trx.bukuId);
     if (book) {
       const currentDipinjam = book.dipinjam || 0;
       await saveOrQueueRecord('buku', 'UPDATE', { dipinjam: Math.max(0, currentDipinjam - 1) }, book.id);
     }
 
+    // AUTO-TRIGGER WA FONNTE TO PARENT!
+    const sFound = siswaList.find(s => s.id === trx.siswaId);
+    if (sFound?.noWaOrtu && typeof navigator !== 'undefined' && navigator.onLine) {
+      const fineMsg = fine > 0 ? `\n⚠️ Denda Keterlambatan: Rp ${fine.toLocaleString('id-ID')}` : ' (Tepat Waktu)';
+      const waMsg = `Pemberitahuan Perpustakaan ${settings.schoolName}:\nAnanda *${trx.namaSiswa}* telah mengembalikan buku:\n📖 *" ${trx.judulBuku} "*\n📅 Tgl Kembali: *${todayStr}*${fineMsg}.\n\nTerima kasih.`;
+      await sendFonnteWA({
+        target: sFound.noWaOrtu,
+        message: waMsg,
+        token: settings.fonnteToken
+      });
+    }
+
+    // Set selected receipt to display return receipt & PDF download option
+    setSelectedReceipt(updatedTrxRecord);
+
     if (res.synced) {
-      alert(`✅ Pengembalian buku "${trx.judulBuku}" berhasil diproses! Denda: Rp ${fine.toLocaleString('id-ID')}`);
+      alert(`✅ Pengembalian buku "${trx.judulBuku}" berhasil diproses! Denda: Rp ${fine.toLocaleString('id-ID')} & Struk PDF Siap Dicetak.`);
     } else {
-      alert(`⚡ [OFFLINE MODE] Pengembalian buku tersimpan di IndexedDB perangkat! Akan otomatis disinkronkan ke Firestore saat online.`);
+      alert(`⚡ [OFFLINE MODE] Pengembalian buku tersimpan di IndexedDB! Akan disinkronkan ke Firestore saat online.`);
     }
   };
 
@@ -383,29 +403,44 @@ export const PustakawanViews: React.FC<PustakawanViewsProps> = ({ activeTab, set
             <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/70 p-4">
               <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
                 <div className="flex justify-between items-center border-b pb-2">
-                  <h3 className="font-bold text-slate-800">Bukti Peminjaman Buku Perpustakaan</h3>
-                  <button onClick={() => setSelectedReceipt(null)} className="text-slate-400">✕</button>
+                  <h3 className="font-bold text-slate-800">
+                    {selectedReceipt.status === 'DIKEMBALIKAN' ? 'Bukti Pengembalian & Denda Perpustakaan' : 'Bukti Peminjaman Buku Perpustakaan'}
+                  </h3>
+                  <button onClick={() => setSelectedReceipt(null)} className="text-slate-400 hover:text-slate-600 font-bold">✕</button>
                 </div>
 
-                <div id="bukti-pinjam-pdf" className="p-6 border border-slate-300 bg-white text-slate-900 font-mono text-xs leading-relaxed">
+                <div id="bukti-transaksi-pdf" className="p-6 border border-slate-300 bg-white text-slate-900 font-mono text-xs leading-relaxed rounded-xl shadow-xs">
                   <div className="text-center border-b pb-2 mb-3">
-                    <h4 className="font-bold uppercase text-sm">{settings.schoolName}</h4>
-                    <p className="text-[10px]">STRUK PEMINJAMAN BUKU PERPUSTAKAAN</p>
+                    <h4 className="font-bold uppercase text-sm tracking-wider">{settings.schoolName}</h4>
+                    <p className="text-[10px] font-semibold text-teal-800">
+                      {selectedReceipt.status === 'DIKEMBALIKAN' ? 'STRUK PENGEMBALIAN BUKU & DENDA' : 'STRUK PEMINJAMAN BUKU PERPUSTAKAAN'}
+                    </p>
                   </div>
-                  <p>ID Transaksi: {selectedReceipt.id}</p>
-                  <p>Nama Siswa   : {selectedReceipt.namaSiswa}</p>
-                  <p>Judul Buku   : {selectedReceipt.judulBuku}</p>
-                  <p>Tgl Pinjam   : {selectedReceipt.tanggalPinjam}</p>
-                  <p>Jatuh Tempo  : {selectedReceipt.tanggalJatuhTempo}</p>
-                  <p className="border-t pt-2 mt-2 text-center text-[10px] italic">Harap mengembalikan buku tepat waktu untuk menghindari denda Rp {settings.dendaPerHari}/hari.</p>
+                  <p><span className="font-semibold">ID Transaksi :</span> {selectedReceipt.id}</p>
+                  <p><span className="font-semibold">Nama Siswa   :</span> {selectedReceipt.namaSiswa}</p>
+                  <p><span className="font-semibold">Judul Buku   :</span> {selectedReceipt.judulBuku}</p>
+                  <p><span className="font-semibold">Tgl Pinjam   :</span> {selectedReceipt.tanggalPinjam}</p>
+                  {selectedReceipt.status === 'DIKEMBALIKAN' ? (
+                    <>
+                      <p><span className="font-semibold">Tgl Kembali  :</span> {selectedReceipt.tanggalKembali || new Date().toISOString().split('T')[0]}</p>
+                      <p className="font-bold text-rose-600"><span className="font-semibold text-slate-900">Total Denda  :</span> Rp {(selectedReceipt.denda || 0).toLocaleString('id-ID')}</p>
+                    </>
+                  ) : (
+                    <p><span className="font-semibold">Jatuh Tempo  :</span> {selectedReceipt.tanggalJatuhTempo}</p>
+                  )}
+                  <p className="border-t pt-2 mt-2 text-center text-[10px] italic text-slate-600">
+                    {selectedReceipt.status === 'DIKEMBALIKAN'
+                      ? 'Terima kasih telah mengembalikan buku perpustakaan.'
+                      : `Harap mengembalikan buku tepat waktu untuk menghindari denda Rp ${settings.dendaPerHari || 1000}/hari.`}
+                  </p>
                 </div>
 
-                <div className="flex justify-end border-t pt-2">
+                <div className="flex justify-end border-t pt-3">
                   <button
-                    onClick={() => downloadElementAsPDF('bukti-pinjam-pdf', `Struk_Pinjam_${selectedReceipt.id}.pdf`)}
-                    className="px-4 py-2 bg-teal-600 text-white font-bold rounded-xl text-xs flex items-center gap-2"
+                    onClick={() => downloadElementAsPDF('bukti-transaksi-pdf', `Struk_Perpus_${selectedReceipt.id}.pdf`)}
+                    className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-xs transition-colors"
                   >
-                    <Printer className="w-4 h-4" /> Download Struk PDF
+                    <Printer className="w-4 h-4" /> Download Struk PDF (html2pdf)
                   </button>
                 </div>
               </div>

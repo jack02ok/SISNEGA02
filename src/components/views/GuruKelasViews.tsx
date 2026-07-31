@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../lib/firebase';
 import { collection, onSnapshot, doc, setDoc, addDoc, deleteDoc } from 'firebase/firestore';
-import { Siswa, Absensi, JurnalKBM, Penilaian, InventarisRombel, UKSScreening, UserProfile, AppSettings, JadwalPiket, AcademicCalendarEvent } from '../../types';
+import { Siswa, Absensi, JurnalKBM, Penilaian, InventarisRombel, UKSScreening, UserProfile, AppSettings, JadwalPiket, AcademicCalendarEvent, Rombel } from '../../types';
 import { BarcodeScannerModal } from '../BarcodeScannerModal';
+import { ProtaPromesAgendaManager } from '../ProtaPromesAgendaManager';
 import { sendFonnteWA } from '../../services/fonnteService';
 import { downloadElementAsPDF, printElement } from '../../services/pdfService';
+import { exportAbsensiToExcel, exportNilaiToExcel, exportInventarisToExcel, exportJurnalToExcel } from '../../services/excelExportService';
 import { getDriveAccessToken, uploadToGoogleDrive } from '../../services/driveExportService';
-import { cacheStudentRoster, getCachedStudentRoster, subscribeOnlineStatus, isOnline as checkIsOnline } from '../../services/offlineStorage';
+import { cacheStudentRoster, getCachedStudentRoster, cacheRombelList, getCachedRombelList, subscribeOnlineStatus, isOnline as checkIsOnline } from '../../services/offlineStorage';
 import {
   ResponsiveContainer,
   BarChart,
@@ -40,7 +42,8 @@ import {
   Bell,
   Search,
   Save,
-  Check
+  Check,
+  FileSpreadsheet
 } from 'lucide-react';
 
 
@@ -57,6 +60,7 @@ export const GuruKelasViews: React.FC<GuruKelasViewsProps> = ({ activeTab, user,
   const [onlineStatus, setOnlineStatus] = useState<boolean>(checkIsOnline());
 
   // State
+  const [rombelList, setRombelList] = useState<Rombel[]>(() => getCachedRombelList());
   const [siswaRombel, setSiswaRombel] = useState<Siswa[]>(() => getCachedStudentRoster());
   const [absensiToday, setAbsensiToday] = useState<Absensi[]>([]);
   const [jurnalList, setJurnalList] = useState<JurnalKBM[]>([]);
@@ -259,6 +263,12 @@ Orang Tua / Wali: ${s.namaOrtu || '-'}
       setPiketList(list);
     }, err => console.warn('JadwalPiket listener error:', err));
 
+    const unsubRombel = onSnapshot(collection(db, 'rombel'), snap => {
+      const list: Rombel[] = [];
+      snap.forEach(d => list.push({ ...d.data(), id: d.id } as Rombel));
+      if (list.length > 0) { setRombelList(list); cacheRombelList(list); }
+    }, err => console.warn('Rombel listener error:', err));
+
     const unsubKalender = onSnapshot(collection(db, 'kalenderAkademik'), snap => {
       const list: AcademicCalendarEvent[] = [];
       snap.forEach(d => list.push({ ...d.data(), id: d.id } as AcademicCalendarEvent));
@@ -267,7 +277,7 @@ Orang Tua / Wali: ${s.namaOrtu || '-'}
 
     return () => {
       unsubSiswa(); unsubAbs(); unsubJur();
-      unsubNil(); unsubInv(); unsubUks(); unsubPiket(); unsubKalender();
+      unsubNil(); unsubInv(); unsubUks(); unsubPiket(); unsubKalender(); unsubRombel();
     };
 
   }, [activeRombel]);
@@ -506,6 +516,25 @@ Orang Tua / Wali: ${s.namaOrtu || '-'}
         </div>
       )}
 
+      {/* TAB: CAPAIAN PEMBELAJARAN, PROTA, PROMES & AGENDA HARIAN GURU */}
+      {(activeTab === 'guru-cp' || activeTab === 'guru-agenda-harian' || activeTab === 'guru-prota' || activeTab === 'guru-promes' || activeTab === 'guru-agenda-kbm') && (
+        <ProtaPromesAgendaManager
+          user={user}
+          settings={settings}
+          role="GURU_KELAS"
+          rombelList={rombelList}
+          initialTab={
+            activeTab === 'guru-cp'
+              ? 'CAPAIAN_PEMBELAJARAN'
+              : activeTab === 'guru-prota'
+              ? 'PROTA'
+              : activeTab === 'guru-promes'
+              ? 'PROMES'
+              : 'AGENDA_HARIAN'
+          }
+        />
+      )}
+
       {/* TAB: PENCATATAN ABSENSI HARIAN SISWA CEPAT & CAMERA SCANNER */}
       {(activeTab === 'guru-absensi-cepat' || activeTab === 'guru-scan') && (
         <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-xs border border-slate-200 dark:border-slate-800 space-y-6 transition-colors">
@@ -522,6 +551,20 @@ Orang Tua / Wali: ${s.namaOrtu || '-'}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => exportAbsensiToExcel(absensiToday, siswaRombel, `Laporan_Presensi_${activeRombel.replace(/\s+/g, '_')}_${absensiTanggal}.xlsx`)}
+                className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-xs transition-all"
+                title="Ekspor Laporan Kehadiran Siswa ke Excel"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-200" /> Ekspor Excel
+              </button>
+              <button
+                onClick={() => downloadElementAsPDF('report-absensi-pdf', `Laporan_Presensi_${activeRombel.replace(/\s+/g, '_')}_${absensiTanggal}.pdf`)}
+                className="px-3.5 py-2 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-xs transition-all"
+                title="Download Laporan Kehadiran PDF untuk Kepala Sekolah"
+              >
+                <Printer className="w-4 h-4 text-amber-300" /> Cetak PDF Laporan
+              </button>
               <button
                 onClick={() => setShowScanner(true)}
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-xs transition-all"
@@ -877,6 +920,13 @@ Orang Tua / Wali: ${s.namaOrtu || '-'}
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => exportNilaiToExcel(penilaianList, siswaRombel, `Laporan_Nilai_${activeRombel.replace(/\s+/g, '_')}.xlsx`)}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-xs transition-all"
+                title="Ekspor Laporan Nilai Hasil Belajar ke Excel"
+              >
+                <FileSpreadsheet className="w-4 h-4 text-emerald-200" /> Ekspor Excel
+              </button>
               <button
                 onClick={() => printElement('report-nilai-pdf', `Cetak_Laporan_Nilai_${activeRombel.replace(/\s+/g, '_')}`)}
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-xs transition-all"
@@ -1329,8 +1379,85 @@ Orang Tua / Wali: ${s.namaOrtu || '-'}
         </div>
       )}
 
-      {/* HIDDEN PRINT CONTAINER FOR REKAP NILAI KELAS PDF */}
+      {/* HIDDEN PRINT CONTAINER FOR ABSENSI & REKAP NILAI KELAS PDF */}
       <div className="hidden">
+        {/* PDF Laporan Presensi Kehadiran Siswa */}
+        <div id="report-absensi-pdf" className="p-8 bg-white text-slate-900 font-serif text-xs leading-relaxed space-y-4">
+          <div className="flex items-center justify-between border-b-4 border-double border-slate-900 pb-3">
+            {settings.schoolLogoUrl && (
+              <img src={settings.schoolLogoUrl} alt={settings.schoolName} className="w-16 h-16 object-contain" referrerPolicy="no-referrer" />
+            )}
+            <div className="text-center flex-1 px-4 space-y-1">
+              <h1 className="text-base font-bold uppercase tracking-wider">Pemerintah Kota / Kabupaten Dinas Pendidikan</h1>
+              <h2 className="text-lg font-black uppercase text-blue-900">{settings.schoolName}</h2>
+              <p className="text-[11px] font-sans text-slate-600">{settings.schoolAddress} • NPSN: {settings.schoolNPSN}</p>
+            </div>
+            {settings.schoolLogoUrl && (
+              <img src={settings.schoolLogoUrl} alt={settings.schoolName} className="w-16 h-16 object-contain opacity-0" />
+            )}
+          </div>
+
+          <div className="text-center pt-2 pb-1 space-y-0.5">
+            <h3 className="text-sm font-bold underline uppercase">LAPORAN HARIAN REKAPITULASI PRESENSI KEHADIRAN SISWA</h3>
+            <p className="text-[11px] font-sans font-bold">Rombongan Belajar: {activeRombel} • Tanggal: {absensiTanggal}</p>
+            <p className="text-[10px] font-sans text-slate-500">Tanggal Cetak: {new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+          </div>
+
+          <div className="space-y-1 font-sans">
+            <table className="w-full text-left text-[10px] border border-slate-300 border-collapse">
+              <thead>
+                <tr className="bg-slate-100 border-b border-slate-300 text-center font-bold">
+                  <th className="p-1.5 border-r w-8">No</th>
+                  <th className="p-1.5 border-r text-left">Nama Siswa</th>
+                  <th className="p-1.5 border-r w-20">NISN</th>
+                  <th className="p-1.5 border-r w-20">Status Kehadiran</th>
+                  <th className="p-1.5 text-left">Keterangan / Catatan Wali</th>
+                </tr>
+              </thead>
+              <tbody>
+                {siswaRombel.map((s, idx) => {
+                  const statusVal = studentStatusMap[s.id] || 'HADIR';
+                  return (
+                    <tr key={s.id || idx} className="border-b border-slate-200">
+                      <td className="p-1.5 border-r text-center">{idx + 1}</td>
+                      <td className="p-1.5 border-r font-semibold">{s.nama}</td>
+                      <td className="p-1.5 border-r text-center font-mono">{s.nisn}</td>
+                      <td className="p-1.5 border-r text-center font-bold">
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] ${
+                          statusVal === 'HADIR' ? 'bg-emerald-100 text-emerald-800' :
+                          statusVal === 'SAKIT' ? 'bg-amber-100 text-amber-800' :
+                          statusVal === 'IZIN' ? 'bg-blue-100 text-blue-800' : 'bg-rose-100 text-rose-800'
+                        }`}>
+                          {statusVal}
+                        </span>
+                      </td>
+                      <td className="p-1.5 text-slate-600">{statusVal === 'HADIR' ? 'Hadir tepat waktu' : `Presensi dicatat ${statusVal}`}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="pt-8 grid grid-cols-2 text-center text-[11px] font-sans">
+            <div>
+              <p>Mengetahui,</p>
+              <p className="font-bold">Kepala Sekolah</p>
+              <div className="h-16"></div>
+              <p className="font-bold underline">{settings.kepsekNama}</p>
+              <p className="text-[10px] text-slate-500">NIP. {settings.kepsekNip}</p>
+            </div>
+            <div>
+              <p>Jakarta, {new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+              <p className="font-bold">Wali Kelas {activeRombel}</p>
+              <div className="h-16"></div>
+              <p className="font-bold underline">{user.displayName}</p>
+              <p className="text-[10px] text-slate-500">NIP. 198204152009022001</p>
+            </div>
+          </div>
+        </div>
+
+        {/* PDF Laporan Rekap Nilai Siswa */}
         <div id="report-nilai-pdf" className="p-8 bg-white text-slate-900 font-serif text-xs leading-relaxed space-y-4">
           {/* Official Kop Sekolah */}
           <div className="flex items-center justify-between border-b-4 border-double border-slate-900 pb-3">

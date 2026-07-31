@@ -22,7 +22,9 @@ import {
   DollarSign,
   CheckCircle2,
   Stethoscope,
-  Activity
+  Activity,
+  Clock,
+  Layers
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -61,8 +63,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeRole, activeTab, onTabCh
 
       case 'GURU_KELAS':
         return [
-          { id: 'guru-absensi-cepat', label: 'Absensi Harian Cepat', icon: UserCheck },
-          { id: 'guru-scan', label: 'Scan Absensi Camera WA', icon: QrCode },
+          { id: 'guru-cp', label: 'Capaian Pembelajaran (CP)', icon: BookOpen },
+          { id: 'guru-agenda-harian', label: 'Agenda Harian Guru', icon: Clock },
+          { id: 'guru-prota', label: 'Program Tahunan (Prota)', icon: FileText },
+          { id: 'guru-promes', label: 'Program Semester (Promes)', icon: Layers },
           { id: 'guru-jurnal', label: 'Jurnal KBM & Catatan BKB', icon: BookOpen },
           { id: 'guru-penilaian', label: 'Modul Penilaian & PTS', icon: GraduationCap },
           { id: 'guru-piket', label: 'Jadwal Piket Kelas & WA', icon: Calendar },
@@ -74,6 +78,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeRole, activeTab, onTabCh
 
       case 'GURU_MAPEL':
         return [
+          { id: 'mapel-cp', label: 'Capaian Pembelajaran (CP)', icon: BookOpen },
+          { id: 'mapel-agenda-harian', label: 'Agenda Harian Mapel', icon: Clock },
+          { id: 'mapel-prota', label: 'Program Tahunan (Prota)', icon: FileText },
+          { id: 'mapel-promes', label: 'Program Semester (Promes)', icon: Layers },
           { id: 'mapel-jurnal', label: 'Jurnal & Presensi Mapel Khusus', icon: BookOpen },
           { id: 'mapel-nilai', label: 'Input Nilai Mapel Khusus', icon: GraduationCap },
           { id: 'mapel-jadwal', label: 'Jadwal Pelajaran Mingguan', icon: Calendar },
