@@ -113,7 +113,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeRole, activeTab, onTabCh
       <div className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider px-3 mb-3">
         NAVIGASI {activeRole.replace('_', ' ')}
       </div>
-      <nav className="space-y-1">
+      <nav className="space-y-1" aria-label={`Navigasi ${activeRole.replace('_', ' ')}`}>
         {menuItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeTab === item.id;
@@ -121,13 +121,14 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeRole, activeTab, onTabCh
             <button
               key={item.id}
               onClick={() => onTabChange(item.id)}
-              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all text-left ${
+              aria-current={isActive ? 'page' : undefined}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-medium transition-all text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 dark:focus-visible:ring-offset-slate-900 ${
                 isActive
                   ? 'bg-blue-600 text-white font-semibold shadow-md shadow-blue-600/20'
                   : 'hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100 text-slate-600 dark:text-slate-400'
               }`}
             >
-              <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} />
+              <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400'}`} aria-hidden="true" />
               <span>{item.label}</span>
             </button>
           );
